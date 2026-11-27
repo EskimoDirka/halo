@@ -2,7 +2,7 @@
 
 Settings for the Glorious **GHS Wireless InfinitePlay** headset on Linux.
 
-![halo showing headset and spare battery, the profile picker, and sound settings](docs/screenshot.png)
+<img src="docs/halo-window.png" width="400" alt="halo showing headset and spare battery, the profile picker, and sound settings">
 
 The headset works on Linux as a standard USB headset, but its settings live
 in Glorious CORE, which only runs on Windows. halo reads and changes them
@@ -28,7 +28,7 @@ affiliated with Glorious.
 
 ## Custom EQ
 
-![halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width](docs/eq-editor.png)
+<img src="docs/halo-eq-editor.png" width="400" alt="halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width">
 
 Drag a band's handle on the graph to change its frequency and gain, and
 scroll over it to change its width. The selected band's filter, frequency,
