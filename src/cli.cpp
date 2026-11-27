@@ -12,6 +12,7 @@
 #include <QSaveFile>
 #include <QTextStream>
 #include <QTimer>
+#include <cmath>
 #include <functional>
 
 #include "headset.h"
@@ -36,6 +37,14 @@ const char *Usage = R"(halo: settings for the Glorious GHS Wireless InfinitePlay
   halo set profile <1-5>          switch the active profile
   halo set autooff <on|off>       power off after 30 idle minutes (not reported back)
   halo set mute <on|off>          mute the microphone (not reported back)
+  halo save                       store the active profile on the headset, so it
+                                  keeps these settings by itself after power-on
+  halo eq [--json]                show the custom EQ curve
+  halo eq band <1-5> [hz=<20-20000>] [db=<-12..12>] [q=<0.1-4>]
+          [type=peak|lowshelf|highshelf|lowpass|highpass|notch]
+                                  change one band; the EQ switches to Custom 1
+  halo eq flat                    reset the curve to flat
+                                  (eq band and eq flat take --save)
   halo watch                      put settings back after each power-on
   halo skill install              install the agent skill
 
@@ -269,6 +278,122 @@ int set(const QStringList &args) {
     return 0;
 }
 
+void printEqualizer(const Protocol::Equalizer &eq) {
+    for (int band = 0; band < eq.frequencies.size(); ++band)
+        out << QString("Band %1  %2 Hz  %3 dB  Q %4  %5\n")
+                   .arg(band + 1)
+                   .arg(eq.frequencies[band], 5)
+                   .arg(eq.gains[band], 5, 'f', 1)
+                   .arg(eq.q[band], 0, 'f', 1)
+                   .arg(Protocol::eqTypeName(eq.types[band]));
+}
+
+QJsonObject equalizerJson(const Protocol::Equalizer &eq) {
+    QJsonArray bands;
+    for (int band = 0; band < eq.frequencies.size(); ++band)
+        bands << QJsonObject{{"band", band + 1}, {"hz", eq.frequencies[band]}, {"db", eq.gains[band]},
+                             {"q", eq.q[band]}, {"type", Protocol::eqTypeName(eq.types[band])}};
+    return {{"ok", true}, {"bands", bands}};
+}
+
+int eq(const QStringList &args) {
+    const bool json = args.contains("--json"), save = args.contains("--save");
+    const QStringList positional = QStringList(args).filter(QRegularExpression("^[^-]"));
+    const QString action = positional.value(2);
+
+    auto fail = [&](const QString &error) {
+        if (json)
+            out << QJsonDocument(QJsonObject{{"ok", false}, {"error", error}}).toJson();
+        err << error << "\n";
+        return 1;
+    };
+
+    HidTransport transport;
+    Headset headset(&transport);
+    if (!connect(headset, transport, json))
+        return 1;
+    if (!waitFor(headset, [&] { return headset.equalizer().valid; }, 1500))
+        return fail("The headset didn't send its EQ curve.");
+
+    Protocol::Equalizer target = headset.equalizer();
+    if (action == "band") {
+        bool isNumber = false;
+        const int band = positional.value(3).toInt(&isNumber) - 1;
+        if (!isNumber || band < 0 || band >= Protocol::EqBands)
+            return fail("eq band takes a band from 1 to 5.");
+        for (const QString &setting : positional.mid(4)) {
+            const QString key = setting.section('=', 0, 0), value = setting.section('=', 1);
+            bool ok = false;
+            const double number = value.toDouble(&ok);
+            if (key == "hz" && ok && number >= Protocol::EqMinFrequency && number <= Protocol::EqMaxFrequency)
+                target.frequencies[band] = int(number);
+            else if (key == "db" && ok && std::abs(number) <= Protocol::EqMaxGain)
+                target.gains[band] = number;
+            else if (key == "q" && ok && number >= Protocol::EqMinQ && number <= Protocol::EqMaxQ)
+                target.q[band] = number;
+            else if (key == "type" && QStringList{"peak", "lowshelf", "highshelf", "lowpass", "highpass", "notch"}.contains(value))
+                target.types[band] = QStringList{"peak", "lowshelf", "highshelf", "lowpass", "highpass", "notch"}.indexOf(value);
+            else
+                return fail(QString("Can't use %1. Bands take hz=20-20000, db=-12..12, q=0.1-4, and type=peak, "
+                                    "lowshelf, highshelf, lowpass, highpass, or notch.").arg(setting));
+        }
+    } else if (action == "flat") {
+        target = Protocol::flatEqualizer();
+    } else if (!action.isEmpty()) {
+        return fail("eq takes band or flat, or nothing to show the curve.");
+    }
+
+    if (action.isEmpty()) {
+        if (json)
+            out << QJsonDocument(equalizerJson(target)).toJson();
+        else
+            printEqualizer(target);
+        return 0;
+    }
+
+    // Send, and wait for the headset to accept it. A read returns the stored
+    // curve, so the read-back only confirms the curve once it's saved.
+    const QByteArray wanted = Protocol::encodeEqualizer(target).left(25);
+    bool accepted = false, refused = false;
+    QObject::connect(&headset, &Headset::acknowledged, [&](int command, bool ok) {
+        if (command == Protocol::Command::Equalizer)
+            (ok ? accepted : refused) = true;
+    });
+    headset.setEqualizer(target, true);
+    if (!waitFor(headset, [&] { return accepted || refused; }, 1500) || refused)
+        return fail("The headset didn't take the curve.");
+    Protocol::Equalizer reported = Protocol::parseEqualizerPayload(Protocol::encodeEqualizer(target));
+    if (save) {
+        Protocol::Equalizer stored;
+        QObject::connect(&headset, &Headset::equalizerReported, [&](const Protocol::Equalizer &eq) { stored = eq; });
+        headset.saveProfile();
+        waitFor(headset, [] { return false; }, 300);
+        headset.readEqualizer();
+        if (!waitFor(headset, [&] { return stored.payload.left(25) == wanted; }, 1500))
+            return fail("The curve plays, but the headset didn't confirm saving it.");
+        reported = stored;
+    } else if (!json) {
+        out << "Playing on Custom 1, not saved; run halo save to keep it.\n";
+    }
+    if (json)
+        out << QJsonDocument(equalizerJson(reported)).toJson();
+    else
+        printEqualizer(reported);
+    return 0;
+}
+
+int save() {
+    HidTransport transport;
+    Headset headset(&transport);
+    if (!connect(headset, transport, false))
+        return 1;
+    headset.saveProfile();
+    // The write needs a moment to leave before the process exits.
+    waitFor(headset, [] { return false; }, 300);
+    out << "Saved profile " << headset.activeProfile() << " to the headset.\n";
+    return 0;
+}
+
 int watch() {
     HidTransport transport;
     Headset headset(&transport);
@@ -317,6 +442,10 @@ int run(const QStringList &args) {
         return set(args);
     if (command == "watch")
         return watch();
+    if (command == "eq")
+        return eq(args);
+    if (command == "save")
+        return save();
     if (command == "skill" && args.value(2) == "install")
         return skillInstall();
     if (command.isEmpty() || command == "help" || command == "--help" || command == "-h") {

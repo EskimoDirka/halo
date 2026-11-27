@@ -21,7 +21,8 @@ affiliated with Glorious.
 - Microphone level, noise cancelling, and sidetone
 - Bluetooth on or off, and the five profiles
 - Keeps every profile's settings across power-ons
-- Shows the custom EQ curve stored on the headset (editing it comes next)
+- A custom EQ editor: drag the five bands on the response graph, pick each band's filter, and save the curve to the headset
+- Saves a profile to the headset, so it keeps those settings by itself
 - A command line for scripts and agents
 
 ## Install
@@ -53,6 +54,7 @@ systemctl --user enable --now halo-watch
 | K | Keep my settings on or off |
 | 1 – 5 | Switch profile |
 | R | Read the headset again |
+| Ctrl+S | Save the profile to the headset |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | ? | Show or hide shortcuts |
 | Q | Quit |
@@ -72,13 +74,19 @@ halo set bluetooth <on|off>
 halo set profile <1-5>
 halo set autooff <on|off>          # power off after 30 idle minutes
 halo set mute <on|off>
+halo save                          # store the active profile on the headset
+halo eq                            # show the custom EQ curve
+halo eq band <1-5> [hz=20-20000] [db=-12..12] [q=0.1-4] [type=peak|lowshelf|highshelf|lowpass|highpass|notch]
+halo eq flat
 halo watch                         # what the halo-watch service runs
 halo skill install                 # agent skill for Claude Code
 ```
 
 Each takes `--json`, and exits 0 on success or 1 with the error on stderr. A
 change only counts once the headset reports it back (auto off and mute aren't
-reported, so those are sent and not confirmed).
+reported, so those are sent and not confirmed). An EQ edit switches the
+preset to Custom 1 and plays at once; `eq band` and `eq flat` take `--save`
+to store it on the headset.
 
 ## How it works
 

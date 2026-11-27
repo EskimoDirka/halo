@@ -32,6 +32,10 @@ class Headset : public QObject {
     Q_PROPERTY(int sidetoneLevel READ sidetoneLevel NOTIFY statusChanged)
     Q_PROPERTY(QVariantList eqFrequencies READ eqFrequencies NOTIFY equalizerChanged)
     Q_PROPERTY(QVariantList eqGains READ eqGains NOTIFY equalizerChanged)
+    Q_PROPERTY(QVariantList eqQ READ eqQ NOTIFY equalizerChanged)
+    Q_PROPERTY(QVariantList eqTypes READ eqTypes NOTIFY equalizerChanged)
+    Q_PROPERTY(QVariantList eqResponse READ eqResponse NOTIFY equalizerChanged)
+    Q_PROPERTY(bool eqDirty READ eqDirty NOTIFY equalizerChanged)
     Q_PROPERTY(bool keepSettings READ keepSettings WRITE setKeepSettings NOTIFY settingsChanged)
     Q_PROPERTY(bool restoreVolume READ restoreVolume WRITE setRestoreVolume NOTIFY settingsChanged)
     Q_PROPERTY(QDateTime lastRestored READ lastRestored NOTIFY restored)
@@ -62,6 +66,13 @@ public:
     int sidetoneLevel() const { return value(Protocol::SidetoneLevel); }
     QVariantList eqFrequencies() const;
     QVariantList eqGains() const;
+    QVariantList eqQ() const;
+    QVariantList eqTypes() const;
+    // The curve's approximate response at EqResponsePoints log-spaced
+    // frequencies, for drawing it.
+    QVariantList eqResponse() const;
+    static constexpr int EqResponsePoints = 96;
+    bool eqDirty() const { return m_eqDirty; }
     const Protocol::Status &status() const { return m_status; }
     const Protocol::Battery &battery() const { return m_battery; }
     const Protocol::Equalizer &equalizer() const { return m_equalizer; }
@@ -93,7 +104,18 @@ public:
     // Not reported back by the headset, so they're sent and not shown.
     Q_INVOKABLE void setAutoOff(bool on);
     Q_INVOKABLE void setMicMute(bool muted);
+    // Edits the custom EQ curve live. The EQ switches to Custom 1 so the
+    // change can be heard, as CORE's editor does; saveProfile() keeps it.
+    Q_INVOKABLE void setEqBand(int band, int frequency, double gain, double q, int type);
+    Q_INVOKABLE void flattenEq();
+    // Stores the active profile, custom EQ curve included, on the headset
+    // (CORE's "Save To Profile").
+    Q_INVOKABLE void saveProfile();
+    // force sends even when the curve matches halo's copy, for callers that
+    // only know the stored curve, not the one playing.
+    void setEqualizer(const Protocol::Equalizer &eq, bool force = false);
     Q_INVOKABLE void refresh();
+    void readEqualizer();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
 
@@ -103,6 +125,11 @@ signals:
     // A status report arrived from the headset itself.
     void statusReported();
     void equalizerChanged();
+    // An EQ reply arrived from the headset (even one ignored mid-edit).
+    void equalizerReported(const Protocol::Equalizer &eq);
+    // The headset acknowledged a write: accepted, or refused (it refuses a
+    // curve unless Custom 1 is the active preset).
+    void acknowledged(int command, bool accepted);
     void settingsChanged();
     void historyChanged();
     // Settings were put back after the headset reset itself.
@@ -111,12 +138,13 @@ signals:
 private:
     // What a change touched: the volume, Bluetooth, the active profile, or a
     // per-profile field (kind >= 0 is the Protocol::Field).
-    enum Kind { VolumeKind = -1, BluetoothKind = -2, ProfileKind = -3 };
+    enum Kind { VolumeKind = -1, BluetoothKind = -2, ProfileKind = -3, EqKind = -4 };
     struct Change {
         int kind;
         int profile;
         int before, after;
         qint64 at;
+        QByteArray eqBefore, eqAfter; // for EqKind: the curves
     };
 
     void onReceived(const QByteArray &report);
@@ -124,6 +152,7 @@ private:
     void send(quint8 command, int value, bool throttled = false);
     void record(int kind, int before, int after);
     void apply(const Change &change, int value);
+    void applyEq(const QByteArray &curve);
     void setOnline(bool online);
     void saveSettings();
 
@@ -137,6 +166,9 @@ private:
     bool m_haveStatus = false;
     int m_pendingVolumeRaw = -1; // last raw volume halo wrote, until the headset echoes it
     QHash<quint8, int> m_queued; // slider values waiting out the throttle
+    QByteArray m_queuedEq;       // a curve waiting out the throttle
+    bool m_eqDirty = false;      // edited since the last save
+    qint64 m_lastEqEditAt = 0;
     QDateTime m_lastRestored;
     qint64 m_lastRestoreAt = 0;
     QList<Change> m_undo, m_redo;

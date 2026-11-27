@@ -4,6 +4,7 @@
 #include <QTemporaryDir>
 #include <QtTest>
 
+#include "eqresponse.h"
 #include "headset.h"
 #include "hidtransport.h"
 #include "protocol.h"
@@ -267,6 +268,76 @@ private slots:
             {Command::Sidetone, 1}, {Command::SidetoneLevel, 3}, {Command::MicVolume, 1},
             {Command::EqPreset, 5}, {Command::ActiveProfile, 3}}));
         QCOMPARE(Settings::load(dir.filePath("settings.json")).value(1, SidetoneLevel), 3);
+    }
+
+    void equalizerRoundTrips()
+    {
+        Equalizer eq = flatEqualizer();
+        QVERIFY(eq.valid);
+        QCOMPARE(eq.frequencies, (QList<int>{45, 250, 1000, 4000, 10000}));
+        eq.gains[1] = 3.04;    // rounds to tenths
+        eq.q[2] = 9.0;         // clamps to 4.0
+        eq.frequencies[0] = 5; // clamps to 20 Hz
+        eq.types[4] = 4;
+        const QByteArray wire = encodeEqualizer(eq);
+        QCOMPARE(wire.size(), 50);
+        QCOMPARE(wire.mid(25), flatEqualizer().payload.mid(25)); // CORE's second block
+        const Equalizer back = parseEqualizerPayload(wire);
+        QCOMPARE(back.gains[1], 3.0);
+        QCOMPARE(back.q[2], 4.0);
+        QCOMPARE(back.frequencies[0], 20);
+        QCOMPARE(back.types[4], 4);
+    }
+
+    void responseIsFlatThenPeaks()
+    {
+        for (double db : EqResponse::response(flatEqualizer(), 32))
+            QVERIFY(qAbs(db) < 0.01);
+        QVERIFY(qAbs(EqResponse::bandGainAt(0, 1000, 6, 1, 1000) - 6) < 0.05);
+        QVERIFY(qAbs(EqResponse::bandGainAt(0, 1000, 6, 1, 20)) < 0.1);
+        QVERIFY(EqResponse::bandGainAt(4, 1000, 0, 0.7, 50) < -20); // high pass
+    }
+
+    // The headset refuses a curve unless Custom 1 plays, so the switch goes
+    // out first, then the curve.
+    void editingSwitchesToCustomFirst()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, dir.filePath("settings.json"));
+        transport.push(statusReport(0x22, false));
+        transport.push(reply(Command::Equalizer, flatEqualizer().payload.toHex()));
+        transport.writes.clear();
+        headset.setEqBand(1, 250, 3.0, 1.0, 0);
+        QCOMPARE(transport.writes.size(), 2);
+        QCOMPARE(transport.writes[0].left(5), QByteArray::fromHex("1504020106"));
+        QCOMPARE(transport.writes[1].left(4), QByteArray::fromHex("15050232"));
+        QCOMPARE(quint8(transport.writes[1][4 + 11]), quint8(0x1E));
+        QVERIFY(headset.eqDirty());
+        QCOMPARE(headset.eqGains()[1].toDouble(), 3.0);
+
+        // The stored curve the headset reads back doesn't replace the edit.
+        transport.push(reply(Command::Equalizer, flatEqualizer().payload.toHex()));
+        QCOMPARE(headset.eqGains()[1].toDouble(), 3.0);
+
+        headset.undo(); // the curve, then the preset
+        QCOMPARE(headset.eqGains()[1].toDouble(), 0.0);
+        headset.saveProfile();
+        QVERIFY(!headset.eqDirty());
+        QCOMPARE(transport.writes.last().left(4), QByteArray::fromHex("15180200"));
+    }
+
+    void acknowledgementsAreRecognised()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, dir.filePath("settings.json"));
+        QSignalSpy acks(&headset, &Headset::acknowledged);
+        transport.push(QByteArray::fromHex("15050100") + QByteArray(60, '\0'));
+        transport.push(QByteArray::fromHex("15050000") + QByteArray(60, '\0'));
+        QCOMPARE(acks.size(), 2);
+        QCOMPARE(acks[0][1].toBool(), true);
+        QCOMPARE(acks[1][1].toBool(), false);
     }
 
     void keepSettingsOffLeavesTheHeadsetAlone()

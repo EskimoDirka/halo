@@ -22,7 +22,46 @@ ApplicationWindow {
 
     Shortcut { sequence: "?"; context: Qt.ApplicationShortcut; onActivated: win.helpVisible = !win.helpVisible }
     Shortcut { sequence: "Esc"; context: Qt.ApplicationShortcut; enabled: win.helpVisible; onActivated: win.helpVisible = false }
-    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: Qt.quit() }
+    Shortcut { sequence: "Q"; context: Qt.ApplicationShortcut; onActivated: win.close() }
+    Shortcut { sequences: [StandardKey.Save]; context: Qt.ApplicationShortcut; onActivated: headset.saveProfile() }
+
+    // Unsaved EQ edits play until the headset turns off; ask before leaving.
+    property bool confirmedQuit: false
+    onClosing: (close) => {
+        if (headset.eqDirty && headset.online && !win.confirmedQuit) {
+            close.accepted = false
+            quitDialog.open()
+        }
+    }
+
+    Dialog {
+        id: quitDialog
+        anchors.centerIn: parent
+        // A fixed width: one tied to the window is negative while the window
+        // is still being created, and Material's Dialog can't settle on it.
+        // The window is never narrower than 420.
+        width: 360
+        modal: true
+        title: qsTr("Save the custom EQ?")
+        standardButtons: Dialog.Save | Dialog.Discard | Dialog.Cancel
+        Label {
+            id: quitText
+            width: quitDialog.availableWidth
+            wrapMode: Text.WordWrap
+            text: qsTr("The edited curve plays now, but the headset forgets it when it turns off unless it's saved.")
+        }
+        onAccepted: quitAfter(true)
+        onDiscarded: quitAfter(false)
+        function quitAfter(save) {
+            if (save)
+                headset.saveProfile()
+            win.confirmedQuit = true
+            close()
+            // Give the save a moment to leave before the window goes.
+            quitTimer.start()
+        }
+    }
+    Timer { id: quitTimer; interval: 300; onTriggered: Qt.quit() }
     Shortcut { sequence: "Space"; context: Qt.ApplicationShortcut; onActivated: headset.toggleVoicePrompts() }
     Shortcut { sequences: ["Up", "+", "="]; context: Qt.ApplicationShortcut; onActivated: headset.stepVolume(2) }
     Shortcut { sequences: ["Down", "-"]; context: Qt.ApplicationShortcut; onActivated: headset.stepVolume(-2) }
@@ -131,12 +170,26 @@ ApplicationWindow {
                             current: headset.activeProfile - 1
                             onChosen: (index) => headset.setActiveProfile(index + 1)
                         }
-                        Label {
+                        RowLayout {
                             Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: "#9a9aa2"
-                            font.pixelSize: 12
-                            text: qsTr("Everything below belongs to the active profile, except volume and Bluetooth.")
+                            spacing: 12
+                            Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                color: "#9a9aa2"
+                                font.pixelSize: 12
+                                text: qsTr("Everything below belongs to the active profile, except volume and Bluetooth. Save to headset makes the headset keep it after it turns off.")
+                            }
+                            Button {
+                                text: qsTr("Save to headset")
+                                flat: true
+                                focusPolicy: Qt.NoFocus
+                                Material.roundedScale: theme.radius
+                                onClicked: {
+                                    headset.saveProfile()
+                                    toast.show(qsTr("Profile %1 saved on the headset").arg(headset.activeProfile.toLocaleString(Qt.locale(), 'f', 0)))
+                                }
+                            }
                         }
                     }
                 }
@@ -304,15 +357,7 @@ ApplicationWindow {
                     ColumnLayout {
                         width: parent.width
                         spacing: 8
-                        Label { text: qsTr("Custom EQ"); font.pixelSize: 14 }
-                        EqualizerBands { Layout.fillWidth: true; frequencies: headset.eqFrequencies; gains: headset.eqGains }
-                        Label {
-                            Layout.fillWidth: true
-                            wrapMode: Text.WordWrap
-                            color: "#9a9aa2"
-                            font.pixelSize: 12
-                            text: qsTr("The curve stored on the headset, used by Custom 1. Editing it here comes next.")
-                        }
+                        EqEditor { Layout.fillWidth: true }
                     }
                 }
             }

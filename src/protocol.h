@@ -114,6 +114,19 @@ struct Equalizer {
     QByteArray payload;
 };
 Equalizer parseEqualizer(const QByteArray &report);
+Equalizer parseEqualizerPayload(const QByteArray &payload);
+
+// Limits CORE itself keeps to when it writes a curve.
+constexpr int EqBands = 5;
+constexpr int EqMinFrequency = 20, EqMaxFrequency = 20000;
+constexpr double EqMaxGain = 12.0;           // dB either way
+constexpr double EqMinQ = 0.1, EqMaxQ = 4.0; // CORE clamps Q to 4.0
+constexpr int EqTypes = 6;                   // filter types 0..5
+// The 50 bytes a 05 write carries: the curve, clamped to the limits above,
+// then the flat second block CORE always sends.
+QByteArray encodeEqualizer(const Equalizer &eq);
+Equalizer flatEqualizer();
+QString eqTypeName(int type);
 
 QString parseSerial(const QByteArray &report);
 

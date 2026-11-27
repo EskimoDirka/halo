@@ -111,15 +111,18 @@ Battery parseBattery(const QByteArray &report) {
 }
 
 Equalizer parseEqualizer(const QByteArray &report) {
+    return parseEqualizerPayload(payload(report, Command::Equalizer));
+}
+
+Equalizer parseEqualizerPayload(const QByteArray &p) {
     Equalizer eq;
-    const QByteArray p = payload(report, Command::Equalizer);
     // Two 25-byte blocks. The first is the custom curve: five big-endian
     // frequencies, five signed gains in tenths of a dB, five Q values in
     // tenths, five filter types. CORE always writes the second block as a
     // flat default; what it controls is unknown.
     if (p.size() < 25)
         return eq;
-    for (int band = 0; band < 5; ++band) {
+    for (int band = 0; band < EqBands; ++band) {
         eq.frequencies << (quint8(p[band * 2]) << 8 | quint8(p[band * 2 + 1]));
         eq.gains << qint8(p[10 + band]) / 10.0;
         eq.q << quint8(p[15 + band]) / 10.0;
@@ -128,6 +131,36 @@ Equalizer parseEqualizer(const QByteArray &report) {
     eq.payload = p;
     eq.valid = eq.frequencies.first() > 0;
     return eq;
+}
+
+// CORE's second block, sent unchanged with every curve.
+static const QByteArray SecondBlock = QByteArray::fromHex("002D00FA03E80FA02710" "0000000000" "1414141414" "0000000000");
+
+QByteArray encodeEqualizer(const Equalizer &eq) {
+    QByteArray block(25, '\0');
+    for (int band = 0; band < EqBands; ++band) {
+        const int frequency = qBound(EqMinFrequency, eq.frequencies.value(band, 1000), EqMaxFrequency);
+        block[band * 2] = char(frequency >> 8);
+        block[band * 2 + 1] = char(frequency & 0xff);
+        block[10 + band] = char(qint8(qBound(-120, int(std::lround(eq.gains.value(band) * 10)), 120)));
+        block[15 + band] = char(qBound(int(EqMinQ * 10), int(std::lround(eq.q.value(band, 1.0) * 10)), int(EqMaxQ * 10)));
+        block[20 + band] = char(qBound(0, eq.types.value(band), EqTypes - 1));
+    }
+    return block + SecondBlock;
+}
+
+Equalizer flatEqualizer() { return parseEqualizerPayload(SecondBlock + SecondBlock); }
+
+QString eqTypeName(int type) {
+    switch (type) {
+    case 0: return "peak";
+    case 1: return "lowshelf";
+    case 2: return "highshelf";
+    case 3: return "lowpass";
+    case 4: return "highpass";
+    case 5: return "notch";
+    }
+    return {};
 }
 
 QString parseSerial(const QByteArray &report) {

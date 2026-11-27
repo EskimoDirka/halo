@@ -6,6 +6,7 @@ TEMPLATE = app
 
 HEADERS += \
     src/cli.h \
+    src/eqresponse.h \
     src/headset.h \
     src/hidtransport.h \
     src/protocol.h \
@@ -17,6 +18,7 @@ HEADERS += \
 SOURCES += \
     src/main.cpp \
     src/cli.cpp \
+    src/eqresponse.cpp \
     src/headset.cpp \
     src/hidtransport.cpp \
     src/protocol.cpp \

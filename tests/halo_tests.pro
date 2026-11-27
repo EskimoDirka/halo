@@ -5,7 +5,7 @@ TEMPLATE = app
 
 INCLUDEPATH += ../src
 
-HEADERS += ../src/headset.h ../src/hidtransport.h ../src/protocol.h ../src/settings.h \
+HEADERS += ../src/eqresponse.h ../src/headset.h ../src/hidtransport.h ../src/protocol.h ../src/settings.h \
            ../src/theme.h ../src/translator.h ../src/transport.h
-SOURCES += halo_tests.cpp ../src/headset.cpp ../src/hidtransport.cpp ../src/protocol.cpp \
+SOURCES += halo_tests.cpp ../src/eqresponse.cpp ../src/headset.cpp ../src/hidtransport.cpp ../src/protocol.cpp \
            ../src/settings.cpp ../src/theme.cpp ../src/translator.cpp

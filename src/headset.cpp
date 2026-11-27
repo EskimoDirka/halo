@@ -2,6 +2,8 @@
 
 #include <QStringList>
 
+#include "eqresponse.h"
+
 using namespace Protocol;
 
 Headset::Headset(Transport *transport, const QString &settingsPath, QObject *parent)
@@ -34,10 +36,14 @@ Headset::Headset(Transport *transport, const QString &settingsPath, QObject *par
     m_throttle.setInterval(60);
     connect(&m_throttle, &QTimer::timeout, this, [this] {
         const auto queued = m_queued;
+        const QByteArray curve = m_queuedEq;
         m_queued.clear();
+        m_queuedEq.clear();
         for (auto it = queued.begin(); it != queued.end(); ++it)
             send(it.key(), it.value());
-        if (!queued.isEmpty())
+        if (!curve.isEmpty())
+            m_transport->write(writeRequest(Command::Equalizer, curve));
+        if (!queued.isEmpty() || !curve.isEmpty())
             m_throttle.start();
     });
 
@@ -77,6 +83,28 @@ QVariantList Headset::eqGains() const {
     return list;
 }
 
+QVariantList Headset::eqQ() const {
+    QVariantList list;
+    for (double q : m_equalizer.q)
+        list << q;
+    return list;
+}
+
+QVariantList Headset::eqTypes() const {
+    QVariantList list;
+    for (int t : m_equalizer.types)
+        list << t;
+    return list;
+}
+
+QVariantList Headset::eqResponse() const {
+    QVariantList list;
+    if (m_equalizer.valid)
+        for (double db : EqResponse::response(m_equalizer, EqResponsePoints))
+            list << db;
+    return list;
+}
+
 void Headset::refresh() {
     if (m_transport->state() != Transport::Open)
         return;
@@ -87,7 +115,18 @@ void Headset::refresh() {
         m_answerTimeout.start();
 }
 
+void Headset::readEqualizer() {
+    if (m_transport->state() == Transport::Open)
+        m_transport->write(readRequest(Command::Equalizer));
+}
+
 void Headset::onReceived(const QByteArray &report) {
+    // A write's acknowledgement carries no data: 15 <cmd> 01 00 when it was
+    // taken, 15 <cmd> 00 00 when it was refused.
+    if (replyCommand(report) >= 0 && quint8(report[3]) == 0 && replyCommand(report) != Command::Status) {
+        emit acknowledged(replyCommand(report), quint8(report[2]) == 0x01);
+        return;
+    }
     switch (replyCommand(report)) {
     case Command::Status: {
         const Status status = parseStatus(report);
@@ -113,6 +152,12 @@ void Headset::onReceived(const QByteArray &report) {
     }
     case Command::Equalizer: {
         const Equalizer eq = parseEqualizer(report);
+        if (eq.valid)
+            emit equalizerReported(eq);
+        // A read returns the curve stored on the headset, not the one playing;
+        // until the edits are saved, halo's copy is the live one.
+        if (m_eqDirty || QDateTime::currentMSecsSinceEpoch() - m_lastEqEditAt < 2000)
+            break;
         if (eq.valid && eq.payload != m_equalizer.payload) {
             m_equalizer = eq;
             emit equalizerChanged();
@@ -276,6 +321,76 @@ void Headset::setMicMute(bool muted) {
         send(Command::MicMute, muted ? 1 : 0);
 }
 
+void Headset::setEqBand(int band, int frequency, double gain, double q, int type) {
+    if (!m_online || !m_equalizer.valid || band < 0 || band >= EqBands)
+        return;
+    Equalizer eq = m_equalizer;
+    eq.frequencies[band] = frequency;
+    eq.gains[band] = gain;
+    eq.q[band] = q;
+    eq.types[band] = type;
+    setEqualizer(eq);
+}
+
+void Headset::flattenEq() {
+    if (m_online && m_equalizer.valid)
+        setEqualizer(flatEqualizer());
+}
+
+void Headset::setEqualizer(const Equalizer &eq, bool force) {
+    if (!m_online || !m_equalizer.valid)
+        return;
+    // Round-tripping through the wire format clamps it to what the headset
+    // takes, so halo shows exactly what was sent.
+    const QByteArray curve = encodeEqualizer(eq).left(25);
+    if (curve == m_equalizer.payload.left(25) && !force)
+        return;
+    // The headset only takes a curve while Custom 1 plays, so switch first,
+    // as CORE's editor does; the edit is heard as it's made. The switch is
+    // recorded first too, so undo takes back the edit before the switch.
+    if (eqPreset() != 6)
+        setEqPreset(6);
+    const qint64 now = QDateTime::currentMSecsSinceEpoch();
+    // One drag of a band is one step to undo.
+    if (!m_undo.isEmpty() && m_undo.last().kind == EqKind && now - m_undo.last().at < 1000) {
+        m_undo.last().eqAfter = curve;
+        m_undo.last().at = now;
+    } else {
+        m_undo.append({EqKind, m_status.activeProfile, 0, 0, now, m_equalizer.payload.left(25), curve});
+    }
+    m_redo.clear();
+    emit historyChanged();
+    applyEq(curve);
+}
+
+void Headset::applyEq(const QByteArray &curve) {
+    Equalizer eq = parseEqualizerPayload(curve);
+    const QByteArray full = encodeEqualizer(eq);
+    m_equalizer = parseEqualizerPayload(full);
+    m_eqDirty = true;
+    m_lastEqEditAt = QDateTime::currentMSecsSinceEpoch();
+    if (m_throttle.isActive()) {
+        m_queuedEq = full;
+    } else {
+        m_transport->write(writeRequest(Command::Equalizer, full));
+        m_throttle.start();
+    }
+    emit equalizerChanged();
+}
+
+void Headset::saveProfile() {
+    if (!m_online)
+        return;
+    // The last curve goes out before the save, as CORE does it.
+    if (!m_queuedEq.isEmpty()) {
+        m_transport->write(writeRequest(Command::Equalizer, m_queuedEq));
+        m_queuedEq.clear();
+    }
+    m_transport->write(writeRequest(Command::SaveProfile, QByteArray()));
+    m_eqDirty = false;
+    emit equalizerChanged();
+}
+
 void Headset::apply(const Change &change, int value) {
     switch (change.kind) {
     case VolumeKind:
@@ -325,7 +440,10 @@ void Headset::undo() {
         return;
     Change change = m_undo.takeLast();
     change.at = 0;
-    apply(change, change.before);
+    if (change.kind == EqKind)
+        applyEq(change.eqBefore);
+    else
+        apply(change, change.before);
     m_redo.append(change);
     emit historyChanged();
 }
@@ -334,7 +452,10 @@ void Headset::redo() {
     if (m_redo.isEmpty() || !m_online)
         return;
     const Change change = m_redo.takeLast();
-    apply(change, change.after);
+    if (change.kind == EqKind)
+        applyEq(change.eqAfter);
+    else
+        apply(change, change.after);
     m_undo.append(change);
     emit historyChanged();
 }

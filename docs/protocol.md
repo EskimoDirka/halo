@@ -28,7 +28,8 @@ request  15 <cmd> 01 00                 read
 reply    15 <cmd> 01 <len> <data…>      (zero-padded to 64 bytes)
 ```
 
-Every write is acknowledged with `15 <cmd> 01 00`. The headset sends a `25`
+Every write is acknowledged with `15 <cmd> 01 00` when the headset takes it,
+or `15 <cmd> 00 00` when it refuses it. The headset sends a `25`
 status reply on its own about every 30 seconds, and at once when its state
 changes (the volume wheel, a profile switch, powering on).
 
@@ -53,7 +54,7 @@ last column says otherwise.
 | `14` | auto off after 30 idle minutes | `00` off, `01` on | CORE offers no other times; not yet seen in the status block |
 | `15` | Bluetooth | `00` off, `01` on | |
 | `17` | battery | read only | headset %, spare pack %, one flag byte |
-| `18` | save profile | no data (`15 18 02 00`) | sent by CORE's custom EQ editor after its last `05` write |
+| `18` | save profile | no data (`15 18 02 00`) | stores the active profile on the headset, custom EQ curve included; see below |
 | `20` | active profile | 1–5 | the headset pushes a status at once |
 | `25` | status | read, and pushed | below |
 | `26` `27` `28` | unknown | read only | CORE polls every 2.5 s; replies never changed during any setting change |
@@ -100,11 +101,28 @@ fields are confirmed:
 | 20–24 | five filter types: 0 peak, 1 low shelf, 2 high shelf, 3 low pass, 4 high pass, 5 probably notch |
 
 CORE writes only the first block; the second is always the flat default
-(45/250/1k/4k/10k Hz, 0 dB, Q 2.0, peak). What it controls is unknown. A read
-returns the curve stored for Custom 1.
+(45/250/1k/4k/10k Hz, 0 dB, Q 2.0, peak). What it controls is unknown.
+
+Tested on Linux:
+
+- The headset **refuses a curve** (`15 05 00 00`) unless Custom 1 is the
+  active preset. CORE's editor switches to it (`04` → 6) as it opens; halo
+  does the same before its first write.
+- A **read returns the stored curve**, not the one playing. A written curve
+  plays at once but only shows up in a read after a `18` save.
+
+## Saving a profile (`18`)
+
+CORE sends `18` from its custom EQ editor's Save To Profile button. It looks
+like it stores the whole active profile, not just the curve: after a CORE
+session that saved while Voice Prompts were off and Custom 1 was playing, the
+headset powered on with Voice Prompts off (they had reset to on at every
+power-on before) and with Custom 1 selected. A second power cycle after a
+save with other settings would confirm it.
 
 ## Still to work out
 
 - Header bytes 1–3 and 7, the first byte of each profile record, and `26`–`30`.
 - Whether auto off or mic mute appear anywhere in the status.
 - What the EQ's second block does, and how Custom 2 stores its curve.
+- Exactly what `18` stores.

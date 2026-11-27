@@ -26,5 +26,12 @@ stderr, and prints JSON with `--json`.
 `state` is `online`, `off` (receiver present, headset off or away), `missing`
 (no receiver), or `permission` (halo's udev rule isn't installed).
 
-The custom EQ curve is read-only so far. Don't write other commands to the
-device by hand.
+- `halo eq --json`: the custom EQ curve, five bands of `hz`, `db`, `q`, `type`.
+- `halo eq band <1-5> [hz=20-20000] [db=-12..12] [q=0.1-4] [type=peak|lowshelf|highshelf|lowpass|highpass|notch] [--save]`
+  and `halo eq flat [--save]`: edit the curve. The EQ switches to Custom 1
+  and the edit plays at once; without `--save` the headset forgets it when
+  it turns off.
+- `halo save`: store the active profile on the headset, so it keeps these
+  settings after power-on by itself.
+
+Don't write other commands to the device by hand.

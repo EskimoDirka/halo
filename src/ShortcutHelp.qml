@@ -30,6 +30,7 @@ Rectangle {
                     ["K", qsTr("Keep my settings on or off")],
                     ["1 – 5", qsTr("Switch profile")],
                     ["R", qsTr("Read the headset again")],
+                    ["Ctrl+S", qsTr("Save the profile to the headset")],
                     ["Ctrl+Z", qsTr("Undo")],
                     ["Ctrl+Shift+Z", qsTr("Redo")],
                     ["?", qsTr("Show or hide shortcuts")],
