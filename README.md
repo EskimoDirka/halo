@@ -2,7 +2,7 @@
 
 Settings for the Glorious **GHS Wireless InfinitePlay** headset on Linux.
 
-![halo showing battery, profiles, sound, microphone, and custom EQ settings](docs/screenshot.png)
+![halo showing headset and spare battery, the profile picker, and sound settings](docs/screenshot.png)
 
 The headset works on Linux as a standard USB headset, but its settings live
 in Glorious CORE, which only runs on Windows. halo reads and changes them
