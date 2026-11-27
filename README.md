@@ -2,7 +2,7 @@
 
 Settings for the Glorious **GHS Wireless InfinitePlay** headset on Linux.
 
-<img src="docs/halo-window.png" width="400" alt="halo showing headset and spare battery, the profile picker, and sound settings"> <img src="docs/halo-window-settings.png" width="400" alt="halo scrolled down to its microphone, sidetone, Bluetooth, and keep-my-settings controls">
+<img src="docs/halo-window.png" width="400" alt="halo showing headset and spare battery, the profile picker, and sound settings"> <img src="docs/halo-window-settings.png" width="400" alt="halo's microphone, sidetone, Bluetooth, and keep-my-settings controls">
 
 The headset works on Linux as a standard USB headset, but its settings live
 in Glorious CORE, which only runs on Windows. halo reads and changes them
@@ -56,6 +56,8 @@ systemctl --user enable --now halo-watch
 ```
 
 ### Battery on the Omarchy bar
+
+<img src="docs/halo-bar-widget.png" width="233" alt="The Omarchy bar's status icons, with the headset's battery at 50% beside a headset icon">
 
 halo comes with a bar widget that shows the headset's battery, with both
 packs in its tooltip; clicking it opens halo. It hides while the headset is
