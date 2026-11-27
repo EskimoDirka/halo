@@ -43,159 +43,174 @@ ApplicationWindow {
         LayoutMirroring.enabled: Qt.application.layoutDirection === Qt.RightToLeft
         LayoutMirroring.childrenInherit: true
 
-        ColumnLayout {
-            anchors.fill: parent
-            anchors.margins: 20
-            spacing: 14
+        // Tiled windows can be shorter than the content, so it scrolls.
+        ScrollView {
+            id: scroll
+            anchors.top: parent.top
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.bottom: footer.top
+            contentWidth: availableWidth
+            contentHeight: content.implicitHeight + 40
 
-            // Header
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: 12
-                ColumnLayout {
-                    Layout.fillWidth: true
-                    spacing: 2
-                    Label {
-                        text: "GHS Wireless InfinitePlay"
-                        font.pixelSize: 18
-                        font.weight: Font.DemiBold
-                        elide: Text.ElideRight
-                        Layout.fillWidth: true
-                    }
-                    Label {
-                        visible: win.online
-                        text: qsTr("Profile %1").arg(headset.activeProfile.toLocaleString(Qt.locale(), 'f', 0))
-                        color: "#9a9aa2"
-                        font.pixelSize: 13
-                    }
-                }
-                Rectangle {
-                    width: 10; height: 10; radius: 5
-                    color: win.online ? theme.accent : "#55555c"
-                }
-            }
-
-            // Shown when there is nothing to control, saying why.
-            Panel {
-                visible: !win.online
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 6
-                    Label { text: stateTitle(); font.pixelSize: 15; font.weight: Font.DemiBold }
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        color: "#b4b4bb"
-                        text: headset.state === "missing"
-                              ? qsTr("halo connects as soon as the receiver or its base is plugged in.")
-                              : headset.state === "permission"
-                                ? qsTr("halo's udev rule lets you open the receiver. Reinstall halo, then unplug and replug the receiver.")
-                                : qsTr("Turn the headset on, or bring it into range.")
-                    }
-                }
-            }
-
-            RowLayout {
-                visible: win.online
-                Layout.fillWidth: true
+            ColumnLayout {
+                id: content
+                x: 20
+                y: 20
+                width: scroll.availableWidth - 40
                 spacing: 14
-                BatteryGauge { Layout.fillWidth: true; Layout.preferredWidth: 1; label: qsTr("Headset"); level: headset.headsetBattery }
-                BatteryGauge { Layout.fillWidth: true; Layout.preferredWidth: 1; label: qsTr("Spare pack"); level: headset.spareBattery }
-            }
 
-            Panel {
-                visible: win.online
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 4
-                    RowLayout {
+                // Header
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: 12
+                    ColumnLayout {
                         Layout.fillWidth: true
-                        Label { text: qsTr("Volume"); Layout.fillWidth: true; font.pixelSize: 14 }
+                        spacing: 2
                         Label {
-                            text: volumeSlider.value.toLocaleString(Qt.locale(), 'f', 0) + "%"
-                            color: "#b4b4bb"
-                            font.features: { "tnum": 1 }
+                            text: "GHS Wireless InfinitePlay"
+                            font.pixelSize: 18
+                            font.weight: Font.DemiBold
+                            elide: Text.ElideRight
+                            Layout.fillWidth: true
+                        }
+                        Label {
+                            visible: win.online
+                            text: qsTr("Profile %1").arg(headset.activeProfile.toLocaleString(Qt.locale(), 'f', 0))
+                            color: "#9a9aa2"
+                            font.pixelSize: 13
                         }
                     }
-                    Slider {
-                        id: volumeSlider
-                        Layout.fillWidth: true
-                        from: 0; to: 100; stepSize: 2
-                        focusPolicy: Qt.NoFocus
-                        onMoved: headset.setVolume(value)
-                        Binding on value { value: headset.volume; when: !volumeSlider.pressed }
+                    Rectangle {
+                        width: 10; height: 10; radius: 5
+                        color: win.online ? theme.accent : "#55555c"
                     }
-                    SettingRow {
-                        Layout.fillWidth: true
-                        title: qsTr("Voice Prompts")
-                        detail: qsTr("Spoken \"power on\" and battery announcements.")
-                        checked: headset.voicePrompts
-                        onToggled: (on) => headset.setVoicePrompts(on)
+                }
+
+                // Shown when there is nothing to control, saying why.
+                Panel {
+                    visible: !win.online
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 6
+                        Label { text: stateTitle(); font.pixelSize: 15; font.weight: Font.DemiBold }
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: "#b4b4bb"
+                            text: headset.state === "missing"
+                                  ? qsTr("halo connects as soon as the receiver or its base is plugged in.")
+                                  : headset.state === "permission"
+                                    ? qsTr("halo's udev rule lets you open the receiver. Reinstall halo, then unplug and replug the receiver.")
+                                    : qsTr("Turn the headset on, or bring it into range.")
+                        }
+                    }
+                }
+
+                RowLayout {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    spacing: 14
+                    BatteryGauge { Layout.fillWidth: true; Layout.preferredWidth: 1; label: qsTr("Headset"); level: headset.headsetBattery }
+                    BatteryGauge { Layout.fillWidth: true; Layout.preferredWidth: 1; label: qsTr("Spare pack"); level: headset.spareBattery }
+                }
+
+                Panel {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 4
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: qsTr("Volume"); Layout.fillWidth: true; font.pixelSize: 14 }
+                            Label {
+                                text: volumeSlider.value.toLocaleString(Qt.locale(), 'f', 0) + "%"
+                                color: "#b4b4bb"
+                                font.features: { "tnum": 1 }
+                            }
+                        }
+                        Slider {
+                            id: volumeSlider
+                            Layout.fillWidth: true
+                            from: 0; to: 100; stepSize: 2
+                            focusPolicy: Qt.NoFocus
+                            onMoved: headset.setVolume(value)
+                            Binding on value { value: headset.volume; when: !volumeSlider.pressed }
+                        }
+                        SettingRow {
+                            Layout.fillWidth: true
+                            title: qsTr("Voice Prompts")
+                            detail: qsTr("Spoken \"power on\" and battery announcements.")
+                            checked: headset.voicePrompts
+                            onToggled: (on) => headset.setVoicePrompts(on)
+                        }
+                    }
+                }
+
+                Panel {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 12
+                        SettingRow {
+                            Layout.fillWidth: true
+                            title: qsTr("Keep my settings")
+                            detail: qsTr("The headset forgets Voice Prompts and volume when it turns off. halo puts them back for each profile.")
+                            checked: headset.keepSettings
+                            onToggled: (on) => headset.keepSettings = on
+                        }
+                        SettingRow {
+                            Layout.fillWidth: true
+                            enabled: headset.keepSettings
+                            title: qsTr("Restore volume too")
+                            detail: qsTr("Off keeps the headset's 50% start-up volume.")
+                            checked: headset.restoreVolume
+                            onToggled: (on) => headset.restoreVolume = on
+                        }
+                        Label {
+                            visible: !isNaN(headset.lastRestored.getTime())
+                            Layout.fillWidth: true
+                            color: "#9a9aa2"
+                            font.pixelSize: 12
+                            // Reads translator.language so the time re-renders on a switch.
+                            text: translator.language, qsTr("Last put back at %1")
+                                  .arg(headset.lastRestored.toLocaleTimeString(Qt.locale(), Locale.ShortFormat))
+                        }
+                    }
+                }
+
+                Panel {
+                    visible: win.online && headset.eqFrequencies.length > 0
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
+                        spacing: 8
+                        Label { text: qsTr("Equalizer"); font.pixelSize: 14 }
+                        EqualizerBands { Layout.fillWidth: true; frequencies: headset.eqFrequencies }
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: "#9a9aa2"
+                            font.pixelSize: 12
+                            text: qsTr("Read from the headset. Changing the EQ, sidetone, sleep timer, and lights comes once their commands are decoded.")
+                        }
                     }
                 }
             }
+        }
 
-            Panel {
-                visible: win.online
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 12
-                    SettingRow {
-                        Layout.fillWidth: true
-                        title: qsTr("Keep my settings")
-                        detail: qsTr("The headset forgets Voice Prompts and volume when it turns off. halo puts them back for each profile.")
-                        checked: headset.keepSettings
-                        onToggled: (on) => headset.keepSettings = on
-                    }
-                    SettingRow {
-                        Layout.fillWidth: true
-                        enabled: headset.keepSettings
-                        title: qsTr("Restore volume too")
-                        detail: qsTr("Off keeps the headset's 50% start-up volume.")
-                        checked: headset.restoreVolume
-                        onToggled: (on) => headset.restoreVolume = on
-                    }
-                    Label {
-                        visible: !isNaN(headset.lastRestored.getTime())
-                        Layout.fillWidth: true
-                        color: "#9a9aa2"
-                        font.pixelSize: 12
-                        // Reads translator.language so the time re-renders on a switch.
-                        text: translator.language, qsTr("Last put back at %1")
-                              .arg(headset.lastRestored.toLocaleTimeString(Qt.locale(), Locale.ShortFormat))
-                    }
-                }
-            }
-
-            Panel {
-                visible: win.online && headset.eqFrequencies.length > 0
-                Layout.fillWidth: true
-                ColumnLayout {
-                    width: parent.width
-                    spacing: 8
-                    Label { text: qsTr("Equalizer"); font.pixelSize: 14 }
-                    EqualizerBands { Layout.fillWidth: true; frequencies: headset.eqFrequencies }
-                    Label {
-                        Layout.fillWidth: true
-                        wrapMode: Text.WordWrap
-                        color: "#9a9aa2"
-                        font.pixelSize: 12
-                        text: qsTr("Read from the headset. Changing the EQ, sidetone, sleep timer, and lights comes once their commands are decoded.")
-                    }
-                }
-            }
-
-            Item { Layout.fillHeight: true }
-
-            Label {
-                Layout.alignment: Qt.AlignHCenter
-                text: qsTr("Press ? for shortcuts")
-                color: "#6c6c74"
-                font.pixelSize: 12
-            }
+        Label {
+            id: footer
+            anchors.horizontalCenter: parent.horizontalCenter
+            anchors.bottom: parent.bottom
+            anchors.bottomMargin: 12
+            topPadding: 8
+            text: qsTr("Press ? for shortcuts")
+            color: "#6c6c74"
+            font.pixelSize: 12
         }
 
         Toast { id: toast; anchors.horizontalCenter: parent.horizontalCenter; anchors.bottom: parent.bottom; anchors.bottomMargin: 48 }
