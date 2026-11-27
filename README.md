@@ -57,6 +57,7 @@ systemctl --user enable --now halo-watch
 
 ### Battery on the Omarchy bar
 
+<img src="docs/screenshots/bar-widget.png" width="233" alt="The Omarchy bar's status icons, with the headset's battery at 50% beside a headset icon">
 <img src="docs/screenshots/bar-widget-tooltip.png" width="233" alt="The Omarchy bar's status icons, with the headset's battery at 50% beside a headset icon, and its tooltip: Headset 50%, Spare pack 92%">
 
 halo comes with a bar widget that shows the headset's battery, with both
