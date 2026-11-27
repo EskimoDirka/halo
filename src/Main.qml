@@ -53,6 +53,9 @@ ApplicationWindow {
             contentWidth: availableWidth
             contentHeight: content.implicitHeight + 40
 
+            // Stop at the edges instead of overshooting and springing back.
+            Binding { target: scroll.contentItem; property: "boundsBehavior"; value: Flickable.StopAtBounds }
+
             ColumnLayout {
                 id: content
                 x: 20
