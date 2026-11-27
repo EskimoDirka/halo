@@ -169,6 +169,7 @@ private:
     QByteArray m_queuedEq;       // a curve waiting out the throttle
     bool m_eqDirty = false;      // edited since the last save
     qint64 m_lastEqEditAt = 0;
+    int m_pollTick = 0;
     QDateTime m_lastRestored;
     qint64 m_lastRestoreAt = 0;
     QList<Change> m_undo, m_redo;

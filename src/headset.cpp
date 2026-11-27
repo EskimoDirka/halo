@@ -18,10 +18,23 @@ Headset::Headset(Transport *transport, const QString &settingsPath, QObject *par
         emit stateChanged();
     });
 
-    // CORE polls several times a second; battery levels move slowly, and the
-    // headset pushes every other change itself, so a slow poll is enough.
-    m_poll.setInterval(15000);
-    connect(&m_poll, &QTimer::timeout, this, &Headset::refresh);
+    // The headset pushes its changes itself, and announces itself when it
+    // powers on, but going off only shows as a status that isn't answered.
+    // A status read every 5 seconds notices that quickly; battery and EQ
+    // move slowly, so they're read every third time. CORE polls several
+    // times a second.
+    m_poll.setInterval(5000);
+    connect(&m_poll, &QTimer::timeout, this, [this] {
+        if (m_transport->state() != Transport::Open)
+            return;
+        if (++m_pollTick % 3 == 0) {
+            refresh();
+        } else {
+            m_transport->write(readRequest(Command::Status));
+            if (!m_answerTimeout.isActive())
+                m_answerTimeout.start();
+        }
+    });
     m_poll.start();
 
     // No status answer means the receiver is there but the headset is off or

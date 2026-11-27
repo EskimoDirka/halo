@@ -22,7 +22,7 @@ affiliated with Glorious.
 - Bluetooth on or off, and the five profiles
 - Keeps every profile's settings across power-ons
 - A custom EQ editor: drag the five bands on the response graph, pick each band's filter, and save the curve to the headset
-- Saves a profile to the headset, so it keeps those settings by itself
+- Saves a profile to the headset, so it keeps those settings by itself after power-on
 - A battery widget for the Omarchy bar
 - A command line for scripts and agents
 
@@ -50,7 +50,9 @@ systemctl --user enable --now halo-watch
 
 halo comes with a bar widget that shows the headset's battery, with both
 packs in its tooltip; clicking it opens halo. It hides while the headset is
-off.
+off. With the `halo-watch` service running it updates within a few seconds,
+from a status file the service keeps in `$XDG_RUNTIME_DIR/halo/`; without it,
+once a minute.
 
 ```sh
 cp -r /usr/share/halo/omarchy/halo.battery ~/.config/omarchy/plugins/

@@ -394,10 +394,47 @@ int save() {
     return 0;
 }
 
+// Where halo watch publishes the headset's state for the Omarchy bar widget:
+// in the per-user runtime directory, so it's private and gone at logout.
+QString statePath() {
+    const QString runtime = qEnvironmentVariable("XDG_RUNTIME_DIR");
+    return (runtime.isEmpty() ? QDir::tempPath() + "/halo-" + qEnvironmentVariable("USER") : runtime) + "/halo/status.json";
+}
+
 int watch() {
     HidTransport transport;
     Headset headset(&transport);
     auto stamp = [] { return QDateTime::currentDateTime().toString(Qt::ISODate); };
+
+    // Written beside the target and renamed into place, on every change and
+    // every 30 seconds, so a reader can tell a live file from a stale one.
+    const QString path = statePath();
+    QDir().mkpath(QFileInfo(path).absolutePath());
+    auto publish = [&] {
+        const bool online = headset.online();
+        const QJsonObject state{
+            {"state", headset.state()},
+            {"battery", QJsonObject{{"headset", online ? headset.headsetBattery() : -1},
+                                    {"spare", online ? headset.spareBattery() : -1}}},
+            {"updated", QDateTime::currentSecsSinceEpoch()},
+        };
+        QSaveFile file(path);
+        if (file.open(QIODevice::WriteOnly)) {
+            file.write(QJsonDocument(state).toJson(QJsonDocument::Compact));
+            file.commit();
+        }
+    };
+    QTimer debounce, heartbeat;
+    debounce.setSingleShot(true);
+    debounce.setInterval(150);
+    QObject::connect(&debounce, &QTimer::timeout, publish);
+    QObject::connect(&headset, &Headset::stateChanged, &debounce, qOverload<>(&QTimer::start));
+    QObject::connect(&headset, &Headset::statusChanged, &debounce, qOverload<>(&QTimer::start));
+    heartbeat.setInterval(30000);
+    QObject::connect(&heartbeat, &QTimer::timeout, publish);
+    heartbeat.start();
+    publish();
+
     QObject::connect(&headset, &Headset::stateChanged, [&] {
         out << stamp() << " headset " << headset.state() << Qt::endl;
     });
@@ -405,7 +442,9 @@ int watch() {
         out << stamp() << " restored " << what << Qt::endl;
     });
     out << stamp() << " watching; headset " << headset.state() << Qt::endl;
-    return QEventLoop().exec();
+    const int code = QEventLoop().exec();
+    QFile::remove(path);
+    return code;
 }
 
 int skillInstall() {

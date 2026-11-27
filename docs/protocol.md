@@ -113,16 +113,17 @@ Tested on Linux:
 
 ## Saving a profile (`18`)
 
-CORE sends `18` from its custom EQ editor's Save To Profile button. It looks
-like it stores the whole active profile, not just the curve: after a CORE
-session that saved while Voice Prompts were off and Custom 1 was playing, the
-headset powered on with Voice Prompts off (they had reset to on at every
-power-on before) and with Custom 1 selected. A second power cycle after a
-save with other settings would confirm it.
+CORE sends `18` from its custom EQ editor's Save To Profile button. It
+stores the whole active profile, not just the curve, and the headset powers
+on with it. Confirmed twice: after a CORE session saved while Voice Prompts
+were off and Custom 1 was playing, the headset powered on with Voice Prompts
+off (they had reset to on at every power-on before) and Custom 1 selected;
+after halo saved the profile with Glorious Mode selected, it powered on with
+Glorious Mode. Only the volume still resets to 50%, which Glorious describes
+as a safety feature.
 
 ## Still to work out
 
 - Header bytes 1–3 and 7, the first byte of each profile record, and `26`–`30`.
 - Whether auto off or mic mute appear anywhere in the status.
 - What the EQ's second block does, and how Custom 2 stores its curve.
-- Exactly what `18` stores.

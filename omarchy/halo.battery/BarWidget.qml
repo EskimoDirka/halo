@@ -5,9 +5,11 @@ import qs.Commons
 import qs.Commons as Commons
 import qs.Ui
 
-// The GHS Wireless InfinitePlay's battery on the bar, read from halo once a
-// minute. Hidden while the receiver is unplugged or the headset is off, so it
-// only takes room when there's something to show.
+// The GHS Wireless InfinitePlay's battery on the bar. halo watch (the
+// halo-watch service) publishes the headset's state to a small file as it
+// changes, and the widget follows that file; without the service it asks
+// halo once a minute instead. Hidden while the receiver is unplugged or the
+// headset is off, so it only takes room when there's something to show.
 BarWidget {
   id: root
   moduleName: "halo.battery"
@@ -25,8 +27,32 @@ BarWidget {
     return isFinite(n) && n >= 0 && n <= 100 ? Math.round(n) : -1
   }
 
+  // When halo watch last wrote its file, in seconds; 0 when it hasn't.
+  property real published: 0
+  readonly property string statePath: Quickshell.env("XDG_RUNTIME_DIR") + "/halo/status.json"
+
+  function fresh() { return published > 0 && Date.now() / 1000 - published < 90 }
+
   function refresh() {
     if (!statusProc.running) statusProc.running = true
+  }
+
+  function readState(raw) {
+    raw = String(raw || "").trim()
+    if (!raw || raw.length > 4096) {
+      published = 0
+      return
+    }
+    try {
+      var state = JSON.parse(raw)
+      var updated = Number(state.updated)
+      published = isFinite(updated) ? updated : 0
+      online = state.state === "online"
+      headset = percent(state.battery && state.battery.headset)
+      spare = percent(state.battery && state.battery.spare)
+    } catch (e) {
+      published = 0
+    }
   }
 
   visible: online && headset >= 0
@@ -62,12 +88,32 @@ BarWidget {
     }
   }
 
+  FileView {
+    id: stateFile
+    path: root.statePath
+    watchChanges: true
+    printErrors: false
+    onFileChanged: reload()
+    onLoaded: root.readState(text())
+    onLoadFailed: root.published = 0
+  }
+
+  // The file is replaced on each write, which a watch can miss; reading it
+  // again every few seconds is cheap and catches up.
+  Timer {
+    interval: 5000
+    running: true
+    repeat: true
+    onTriggered: stateFile.reload()
+  }
+
+  // Without a fresh file (no halo-watch service), ask halo directly.
   Timer {
     interval: 60000
     running: true
     repeat: true
     triggeredOnStart: true
-    onTriggered: root.refresh()
+    onTriggered: if (!root.fresh()) root.refresh()
   }
 
   TextMetrics {
