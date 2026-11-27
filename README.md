@@ -26,6 +26,25 @@ affiliated with Glorious.
 - A battery widget for the Omarchy bar
 - A command line for scripts and agents
 
+## Two volumes
+
+The headset has its own volume, inside the headset: the one the wheel on the
+back turns, and the one halo's slider and `halo set volume` change. Linux has a
+second, separate volume for the headset (the one your desktop's volume keys and
+sound settings show). Sound goes through both, so the Linux number and what
+you hear don't match, and turning the wheel doesn't move the Linux number:
+the headset doesn't tell Linux about it.
+
+To have one volume control, set the Linux volume to 100% once and use the
+wheel or halo from then on. Turn the wheel down first, as it gets louder:
+
+```sh
+wpctl set-volume @DEFAULT_AUDIO_SINK@ 1.0
+```
+
+PipeWire remembers it for the headset, so it stays at 100% when the headset
+reconnects, until you change it with the volume keys.
+
 ## Custom EQ
 
 <img src="docs/screenshots/eq-editor.png" width="400" alt="halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width">
