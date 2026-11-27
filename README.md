@@ -2,7 +2,7 @@
 
 Settings for the Glorious **GHS Wireless InfinitePlay** headset on Linux.
 
-<img src="docs/halo-window.png" width="400" alt="halo showing headset and spare battery, the profile picker, and sound settings"> <img src="docs/halo-window-settings.png" width="400" alt="halo's microphone, sidetone, Bluetooth, and keep-my-settings controls">
+<img src="docs/screenshots/window.png" width="400" alt="halo showing headset and spare battery, the profile picker, and sound settings"> <img src="docs/screenshots/settings.png" width="400" alt="halo's microphone, sidetone, Bluetooth, and keep-my-settings controls">
 
 The headset works on Linux as a standard USB headset, but its settings live
 in Glorious CORE, which only runs on Windows. halo reads and changes them
@@ -28,7 +28,7 @@ affiliated with Glorious.
 
 ## Custom EQ
 
-<img src="docs/halo-eq-editor.png" width="400" alt="halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width">
+<img src="docs/screenshots/eq-editor.png" width="400" alt="halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width">
 
 Drag a band's handle on the graph to change its frequency and gain, and
 scroll over it to change its width. The selected band's filter, frequency,
@@ -57,7 +57,7 @@ systemctl --user enable --now halo-watch
 
 ### Battery on the Omarchy bar
 
-<img src="docs/halo-bar-widget.png" width="233" alt="The Omarchy bar's status icons, with the headset's battery at 50% beside a headset icon">
+<img src="docs/screenshots/bar-widget.png" width="233" alt="The Omarchy bar's status icons, with the headset's battery at 50% beside a headset icon">
 
 halo comes with a bar widget that shows the headset's battery, with both
 packs in its tooltip; clicking it opens halo. It hides while the headset is
