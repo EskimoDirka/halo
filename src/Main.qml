@@ -28,6 +28,11 @@ ApplicationWindow {
     Shortcut { sequences: ["Down", "-"]; context: Qt.ApplicationShortcut; onActivated: headset.stepVolume(-2) }
     Shortcut { sequence: "K"; context: Qt.ApplicationShortcut; onActivated: headset.keepSettings = !headset.keepSettings }
     Shortcut { sequence: "R"; context: Qt.ApplicationShortcut; onActivated: headset.refresh() }
+    Shortcut { sequence: "1"; context: Qt.ApplicationShortcut; onActivated: headset.setActiveProfile(1) }
+    Shortcut { sequence: "2"; context: Qt.ApplicationShortcut; onActivated: headset.setActiveProfile(2) }
+    Shortcut { sequence: "3"; context: Qt.ApplicationShortcut; onActivated: headset.setActiveProfile(3) }
+    Shortcut { sequence: "4"; context: Qt.ApplicationShortcut; onActivated: headset.setActiveProfile(4) }
+    Shortcut { sequence: "5"; context: Qt.ApplicationShortcut; onActivated: headset.setActiveProfile(5) }
     Shortcut { sequences: [StandardKey.Undo]; context: Qt.ApplicationShortcut; onActivated: headset.undo() }
     Shortcut { sequences: [StandardKey.Redo, "Ctrl+Shift+Z"]; context: Qt.ApplicationShortcut; onActivated: headset.redo() }
 
@@ -77,12 +82,6 @@ ApplicationWindow {
                             elide: Text.ElideRight
                             Layout.fillWidth: true
                         }
-                        Label {
-                            visible: win.online
-                            text: qsTr("Profile %1").arg(headset.activeProfile.toLocaleString(Qt.locale(), 'f', 0))
-                            color: "#9a9aa2"
-                            font.pixelSize: 13
-                        }
                     }
                     Rectangle {
                         width: 10; height: 10; radius: 5
@@ -124,6 +123,29 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     ColumnLayout {
                         width: parent.width
+                        spacing: 8
+                        Label { text: qsTr("Profile"); font.pixelSize: 14 }
+                        SegmentedChoice {
+                            Layout.fillWidth: true
+                            options: [1, 2, 3, 4, 5].map(n => n.toLocaleString(Qt.locale(), 'f', 0))
+                            current: headset.activeProfile - 1
+                            onChosen: (index) => headset.setActiveProfile(index + 1)
+                        }
+                        Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: "#9a9aa2"
+                            font.pixelSize: 12
+                            text: qsTr("Everything below belongs to the active profile, except volume and Bluetooth.")
+                        }
+                    }
+                }
+
+                Panel {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
                         spacing: 4
                         RowLayout {
                             Layout.fillWidth: true
@@ -142,6 +164,47 @@ ApplicationWindow {
                             onMoved: headset.setVolume(value)
                             Binding on value { value: headset.volume; when: !volumeSlider.pressed }
                         }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Label { text: qsTr("Game"); color: "#b4b4bb"; font.pixelSize: 13 }
+                            Item { Layout.fillWidth: true }
+                            Label {
+                                // The balance runs 0 (all game) to 20 (all chat) in 5% steps.
+                                text: qsTr("%1% game · %2% chat")
+                                      .arg((100 - balanceSlider.value * 5).toLocaleString(Qt.locale(), 'f', 0))
+                                      .arg((balanceSlider.value * 5).toLocaleString(Qt.locale(), 'f', 0))
+                                color: "#b4b4bb"
+                                font.pixelSize: 13
+                                font.features: { "tnum": 1 }
+                            }
+                            Item { Layout.fillWidth: true }
+                            Label { text: qsTr("Chat"); color: "#b4b4bb"; font.pixelSize: 13 }
+                        }
+                        Slider {
+                            id: balanceSlider
+                            Layout.fillWidth: true
+                            from: 0; to: 20; stepSize: 1
+                            focusPolicy: Qt.NoFocus
+                            onMoved: headset.setBalance(value)
+                            Binding on value { value: headset.balance; when: !balanceSlider.pressed }
+                        }
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: 4
+                            Label { text: qsTr("Equalizer"); Layout.fillWidth: true; font.pixelSize: 14 }
+                            ComboBox {
+                                Layout.preferredWidth: 180
+                                implicitHeight: 40
+                                font.pixelSize: 13
+                                focusPolicy: Qt.NoFocus
+                                Material.roundedScale: theme.radius
+                                // Glorious Mode is a brand name, kept as is.
+                                model: ["Glorious Mode", qsTr("Music"), qsTr("Immersion"), qsTr("Voice Call"), "FPS",
+                                        qsTr("Custom %1").arg(1), qsTr("Custom %1").arg(2)]
+                                currentIndex: headset.eqPreset - 1
+                                onActivated: (index) => headset.setEqPreset(index + 1)
+                            }
+                        }
                         SettingRow {
                             Layout.fillWidth: true
                             title: qsTr("Voice Prompts")
@@ -157,11 +220,61 @@ ApplicationWindow {
                     Layout.fillWidth: true
                     ColumnLayout {
                         width: parent.width
+                        spacing: 8
+                        Label { text: qsTr("Microphone"); font.pixelSize: 14 }
+                        SegmentedChoice {
+                            Layout.fillWidth: true
+                            options: [qsTr("Low"), qsTr("Medium"), qsTr("High")]
+                            current: headset.micVolume - 1
+                            onChosen: (index) => headset.setMicVolume(index + 1)
+                        }
+                        SettingRow {
+                            Layout.fillWidth: true
+                            title: qsTr("Noise cancelling")
+                            detail: qsTr("Filters background noise from the mic.")
+                            checked: headset.noiseCancelling
+                            onToggled: (on) => headset.setNoiseCancelling(on)
+                        }
+                        SettingRow {
+                            Layout.fillWidth: true
+                            title: qsTr("Sidetone")
+                            detail: qsTr("Hear your own voice in the headset.")
+                            checked: headset.sidetone
+                            onToggled: (on) => headset.setSidetone(on)
+                        }
+                        SegmentedChoice {
+                            Layout.fillWidth: true
+                            enabled: headset.sidetone
+                            opacity: enabled ? 1 : 0.45
+                            options: [qsTr("Low"), qsTr("Medium"), qsTr("High")]
+                            current: headset.sidetoneLevel - 1
+                            onChosen: (index) => headset.setSidetoneLevel(index + 1)
+                        }
+                    }
+                }
+
+                Panel {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    SettingRow {
+                        width: parent.width
+                        title: qsTr("Bluetooth")
+                        detail: qsTr("Pair the headset with a phone alongside the receiver.")
+                        checked: headset.bluetooth
+                        onToggled: (on) => headset.setBluetooth(on)
+                    }
+                }
+
+                Panel {
+                    visible: win.online
+                    Layout.fillWidth: true
+                    ColumnLayout {
+                        width: parent.width
                         spacing: 12
                         SettingRow {
                             Layout.fillWidth: true
                             title: qsTr("Keep my settings")
-                            detail: qsTr("The headset forgets Voice Prompts and volume when it turns off. halo puts them back for each profile.")
+                            detail: qsTr("The headset resets settings like Voice Prompts and volume when it turns on. halo puts each profile's settings back.")
                             checked: headset.keepSettings
                             onToggled: (on) => headset.keepSettings = on
                         }
@@ -191,14 +304,14 @@ ApplicationWindow {
                     ColumnLayout {
                         width: parent.width
                         spacing: 8
-                        Label { text: qsTr("Equalizer"); font.pixelSize: 14 }
-                        EqualizerBands { Layout.fillWidth: true; frequencies: headset.eqFrequencies }
+                        Label { text: qsTr("Custom EQ"); font.pixelSize: 14 }
+                        EqualizerBands { Layout.fillWidth: true; frequencies: headset.eqFrequencies; gains: headset.eqGains }
                         Label {
                             Layout.fillWidth: true
                             wrapMode: Text.WordWrap
                             color: "#9a9aa2"
                             font.pixelSize: 12
-                            text: qsTr("Read from the headset. Changing the EQ, sidetone, sleep timer, and lights comes once their commands are decoded.")
+                            text: qsTr("The curve stored on the headset, used by Custom 1. Editing it here comes next.")
                         }
                     }
                 }

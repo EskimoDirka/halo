@@ -28,6 +28,7 @@ Rectangle {
                     ["Space", qsTr("Voice Prompts on or off")],
                     ["↑  ↓", qsTr("Volume up or down")],
                     ["K", qsTr("Keep my settings on or off")],
+                    ["1 – 5", qsTr("Switch profile")],
                     ["R", qsTr("Read the headset again")],
                     ["Ctrl+Z", qsTr("Undo")],
                     ["Ctrl+Shift+Z", qsTr("Redo")],

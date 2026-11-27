@@ -23,14 +23,24 @@ QTextStream out(stdout), err(stderr);
 
 const char *Usage = R"(halo: settings for the Glorious GHS Wireless InfinitePlay headset.
 
-  halo open                    open the window
-  halo status [--json]         show battery, volume, and Voice Prompts
-  halo set volume <0-100>      set the headset volume
-  halo set prompts <on|off>    turn Voice Prompts on or off
-  halo watch                   put settings back after each power-on
-  halo skill install           install the agent skill
+  halo open                       open the window
+  halo status [--json]            show battery and every setting
+  halo set volume <0-100>         headset volume, in percent
+  halo set prompts <on|off>       Voice Prompts
+  halo set balance <0-20>         game/chat balance; 0 all game, 10 even, 20 all chat
+  halo set eq <preset>            glorious, music, immersion, voice, fps, custom1, custom2 (or 1-7)
+  halo set mic <low|mid|high>     microphone level
+  halo set enc <on|off>           microphone noise cancelling
+  halo set sidetone <off|low|mid|high>
+  halo set bluetooth <on|off>
+  halo set profile <1-5>          switch the active profile
+  halo set autooff <on|off>       power off after 30 idle minutes (not reported back)
+  halo set mute <on|off>          mute the microphone (not reported back)
+  halo watch                      put settings back after each power-on
+  halo skill install              install the agent skill
 
-set and status take --json. Exit status is 0 on success, 1 on error.
+Per-profile settings apply to the active profile. set and status take --json.
+Exit status is 0 on success, 1 on error.
 )";
 
 // Runs the event loop until done() holds or the timeout passes.
@@ -73,36 +83,59 @@ bool connect(Headset &headset, const HidTransport &transport, bool json) {
 }
 
 QJsonObject statusJson(const Headset &headset) {
-    QJsonArray frequencies, q;
-    for (int f : headset.equalizer().frequencies)
-        frequencies << f;
-    for (double value : headset.equalizer().q)
-        q << value;
+    const auto &eq = headset.equalizer();
+    QJsonArray frequencies, gains, q, types;
+    for (int band = 0; band < eq.frequencies.size(); ++band) {
+        frequencies << eq.frequencies[band];
+        gains << eq.gains[band];
+        q << eq.q[band];
+        types << eq.types[band];
+    }
     return {
         {"ok", true},
         {"state", headset.state()},
         {"volume", headset.volume()},
         {"volumeRaw", headset.volumeRaw()},
-        {"voicePrompts", headset.voicePrompts()},
+        {"bluetooth", headset.bluetooth()},
         {"activeProfile", headset.activeProfile()},
+        {"voicePrompts", headset.voicePrompts()},
+        {"balance", headset.balance()},
+        {"eqPreset", headset.eqPreset()},
+        {"eqPresetName", Protocol::eqPresetName(headset.eqPreset())},
+        {"micVolume", headset.micVolume()},
+        {"noiseCancelling", headset.noiseCancelling()},
+        {"sidetone", headset.sidetone()},
+        {"sidetoneLevel", headset.sidetoneLevel()},
         {"battery", QJsonObject{{"headset", headset.headsetBattery()}, {"spare", headset.spareBattery()}}},
-        {"equalizer", QJsonObject{{"frequencies", frequencies}, {"q", q}}},
+        {"customEq", QJsonObject{{"frequencies", frequencies}, {"gains", gains}, {"q", q}, {"types", types}}},
         {"keepSettings", headset.keepSettings()},
         {"restoreVolume", headset.restoreVolume()},
         // The raw replies, for working out the fields not yet understood.
         {"raw", QJsonObject{{"status", QString(headset.status().payload.toHex(' '))},
-                            {"equalizer", QString(headset.equalizer().payload.toHex(' '))}}},
+                            {"equalizer", QString(eq.payload.toHex(' '))}}},
     };
+}
+
+QString levelName(int level) {
+    return level == 1 ? "low" : level == 2 ? "mid" : level == 3 ? "high" : "unknown";
 }
 
 void printStatus(const Headset &headset) {
     auto battery = [](int level) { return level < 0 ? QString("unknown") : QString("%1%").arg(level); };
+    auto onOff = [](bool on) { return on ? "on" : "off"; };
+    const int balance = headset.balance();
     out << "Headset battery   " << battery(headset.headsetBattery()) << "\n"
         << "Spare battery     " << battery(headset.spareBattery()) << "\n"
-        << "Volume            " << headset.volume() << "%\n"
-        << "Voice Prompts     " << (headset.voicePrompts() ? "on" : "off") << "\n"
         << "Profile           " << headset.activeProfile() << "\n"
-        << "Keep settings     " << (headset.keepSettings() ? "on" : "off") << "\n";
+        << "Volume            " << headset.volume() << "%\n"
+        << "Balance           game " << 100 - balance * 5 << "% / chat " << balance * 5 << "%\n"
+        << "EQ                " << Protocol::eqPresetName(headset.eqPreset()) << "\n"
+        << "Voice Prompts     " << onOff(headset.voicePrompts()) << "\n"
+        << "Mic level         " << levelName(headset.micVolume()) << "\n"
+        << "Noise cancelling  " << onOff(headset.noiseCancelling()) << "\n"
+        << "Sidetone          " << (headset.sidetone() ? levelName(headset.sidetoneLevel()) : QString("off")) << "\n"
+        << "Bluetooth         " << onOff(headset.bluetooth()) << "\n"
+        << "Keep settings     " << onOff(headset.keepSettings()) << "\n";
 }
 
 int status(const QStringList &args) {
@@ -120,6 +153,73 @@ int status(const QStringList &args) {
     return 0;
 }
 
+// One `halo set` target: what to send, and how to tell the headset took it.
+struct Target {
+    std::function<void(Headset &)> apply;
+    std::function<bool(const Headset &)> matches; // empty when the headset never reports it
+};
+
+bool parseTarget(const QString &what, const QString &value, Target &target, QString &error) {
+    bool isNumber = false;
+    const int number = value.toInt(&isNumber);
+    const bool on = value == "on", off = value == "off";
+    const QStringList levels{"low", "mid", "high"};
+    const int level = levels.indexOf(value) + 1;
+
+    if (what == "volume") {
+        if (!isNumber || number < 0 || number > 100)
+            return error = "Volume takes a percentage from 0 to 100.", false;
+        target = {[=](Headset &h) { h.setVolume(number); },
+                  [=](const Headset &h) { return h.volumeRaw() == Protocol::volumePercentToRaw(number); }};
+    } else if (what == "balance") {
+        if (!isNumber || number < 0 || number > 20)
+            return error = "Balance takes 0 (all game) to 20 (all chat); 10 is even.", false;
+        target = {[=](Headset &h) { h.setBalance(number); }, [=](const Headset &h) { return h.balance() == number; }};
+    } else if (what == "eq") {
+        const QStringList names{"glorious", "music", "immersion", "voice", "fps", "custom1", "custom2"};
+        const int preset = isNumber ? number : names.indexOf(value.toLower()) + 1;
+        if (preset < 1 || preset > Protocol::EqPresets)
+            return error = "EQ takes glorious, music, immersion, voice, fps, custom1, custom2, or 1-7.", false;
+        target = {[=](Headset &h) { h.setEqPreset(preset); }, [=](const Headset &h) { return h.eqPreset() == preset; }};
+    } else if (what == "mic") {
+        if (!level)
+            return error = "Mic takes low, mid, or high.", false;
+        target = {[=](Headset &h) { h.setMicVolume(level); }, [=](const Headset &h) { return h.micVolume() == level; }};
+    } else if (what == "sidetone") {
+        if (!level && !off)
+            return error = "Sidetone takes off, low, mid, or high.", false;
+        target = {[=](Headset &h) {
+                      h.setSidetone(!off);
+                      if (level)
+                          h.setSidetoneLevel(level);
+                  },
+                  [=](const Headset &h) { return off ? !h.sidetone() : h.sidetone() && h.sidetoneLevel() == level; }};
+    } else if (what == "profile") {
+        if (!isNumber || number < 1 || number > Protocol::Profiles)
+            return error = "Profile takes 1 to 5.", false;
+        target = {[=](Headset &h) { h.setActiveProfile(number); },
+                  [=](const Headset &h) { return h.activeProfile() == number; }};
+    } else if (what == "prompts" || what == "enc" || what == "bluetooth" || what == "autooff" || what == "mute") {
+        if (!on && !off)
+            return error = QString("%1 takes on or off.").arg(what), false;
+        if (what == "prompts")
+            target = {[=](Headset &h) { h.setVoicePrompts(on); }, [=](const Headset &h) { return h.voicePrompts() == on; }};
+        else if (what == "enc")
+            target = {[=](Headset &h) { h.setNoiseCancelling(on); },
+                      [=](const Headset &h) { return h.noiseCancelling() == on; }};
+        else if (what == "bluetooth")
+            target = {[=](Headset &h) { h.setBluetooth(on); }, [=](const Headset &h) { return h.bluetooth() == on; }};
+        else if (what == "autooff")
+            target = {[=](Headset &h) { h.setAutoOff(on); }, {}};
+        else
+            target = {[=](Headset &h) { h.setMicMute(on); }, {}};
+    } else {
+        return error = "halo can set volume, prompts, balance, eq, mic, enc, sidetone, bluetooth, profile, autooff, "
+                       "or mute.", false;
+    }
+    return true;
+}
+
 int set(const QStringList &args) {
     const bool json = args.contains("--json");
     const QStringList positional = QStringList(args).filter(QRegularExpression("^[^-]"));
@@ -132,29 +232,20 @@ int set(const QStringList &args) {
         return 1;
     };
 
-    bool isNumber = false;
-    const int percent = value.toInt(&isNumber);
-    if (what == "volume" && (!isNumber || percent < 0 || percent > 100))
-        return fail("Volume takes a percentage from 0 to 100.");
-    if (what == "prompts" && value != "on" && value != "off")
-        return fail("Voice Prompts take on or off.");
-    if (what != "volume" && what != "prompts")
-        return fail("halo can set volume or prompts.");
+    Target target;
+    QString error;
+    if (!parseTarget(what, value, target, error))
+        return fail(error);
 
     HidTransport transport;
     Headset headset(&transport);
     if (!connect(headset, transport, json))
         return 1;
 
-    auto matches = [&] {
-        return what == "volume" ? headset.volumeRaw() == Protocol::volumePercentToRaw(percent)
-                                : headset.voicePrompts() == (value == "on");
-    };
-    // Nothing to send when the headset already has the value, but the choice
-    // is still remembered for the next power-on.
-    if (matches()) {
-        if (what == "prompts")
-            headset.setVoicePrompts(value == "on");
+    // Already set: nothing changes on the headset, but applying it still
+    // records the choice for the next power-on.
+    if (target.matches && target.matches(headset)) {
+        target.apply(headset);
         if (json)
             out << QJsonDocument(statusJson(headset)).toJson();
         return 0;
@@ -164,14 +255,15 @@ int set(const QStringList &args) {
     // the headset took the value, not just that halo sent it.
     bool reported = false;
     QObject::connect(&headset, &Headset::statusReported, [&] { reported = true; });
-    if (what == "volume")
-        headset.setVolume(percent);
-    else
-        headset.setVoicePrompts(value == "on");
+    target.apply(headset);
     reported = false;
-    const bool took = waitFor(headset, [&] { return reported && matches(); }, 2000);
-    if (!took)
-        return fail("The headset didn't confirm the change.");
+    if (target.matches) {
+        if (!waitFor(headset, [&] { return reported && target.matches(headset); }, 2000))
+            return fail("The headset didn't confirm the change.");
+    } else {
+        // Nothing to confirm against; give the write a moment to go out.
+        waitFor(headset, [] { return false; }, 300);
+    }
     if (json)
         out << QJsonDocument(statusJson(headset)).toJson();
     return 0;

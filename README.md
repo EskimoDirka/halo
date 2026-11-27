@@ -2,13 +2,13 @@
 
 Settings for the Glorious **GHS Wireless InfinitePlay** headset on Linux.
 
-![halo showing battery, volume, Voice Prompts, and the EQ bands](docs/screenshot.png)
+![halo showing battery, profiles, sound, microphone, and custom EQ settings](docs/screenshot.png)
 
 The headset works on Linux as a standard USB headset, but its settings live
 in Glorious CORE, which only runs on Windows. halo reads and changes them
 directly over USB, and fixes one long-standing annoyance: the headset turns
 Voice Prompts back on and resets its volume to 50% every time it powers on.
-halo notices and puts your settings back, per profile.
+halo notices and puts each profile's settings back.
 
 halo is an unofficial, open-source project. It isn't made by, endorsed by, or
 affiliated with Glorious.
@@ -16,13 +16,13 @@ affiliated with Glorious.
 ## What it does
 
 - Headset and spare battery levels
-- Volume and Voice Prompts
-- Keeps Voice Prompts and volume across power-ons, per profile
-- Shows the EQ bands (changing them comes once the commands are decoded)
+- Volume, game/chat balance, and EQ preset (Glorious Mode, Music, Immersion, Voice Call, FPS, Custom)
+- Voice Prompts
+- Microphone level, noise cancelling, and sidetone
+- Bluetooth on or off, and the five profiles
+- Keeps every profile's settings across power-ons
+- Shows the custom EQ curve stored on the headset (editing it comes next)
 - A command line for scripts and agents
-
-Sidetone, mic level, the sleep timer, and the base lights aren't decoded yet.
-[docs/capturing.md](docs/capturing.md) explains how to help.
 
 ## Install
 
@@ -51,6 +51,7 @@ systemctl --user enable --now halo-watch
 | Space | Voice Prompts on or off |
 | ↑ / ↓ | Volume up or down |
 | K | Keep my settings on or off |
+| 1 – 5 | Switch profile |
 | R | Read the headset again |
 | Ctrl+Z / Ctrl+Shift+Z | Undo / redo |
 | ? | Show or hide shortcuts |
@@ -60,13 +61,24 @@ systemctl --user enable --now halo-watch
 
 ```sh
 halo status [--json]
-halo set volume <0-100> [--json]
-halo set prompts <on|off> [--json]
-halo watch                  # what the halo-watch service runs
-halo skill install          # agent skill for Claude Code
+halo set volume <0-100>
+halo set prompts <on|off>
+halo set balance <0-20>            # 0 all game, 10 even, 20 all chat
+halo set eq <glorious|music|immersion|voice|fps|custom1|custom2>
+halo set mic <low|mid|high>
+halo set enc <on|off>              # microphone noise cancelling
+halo set sidetone <off|low|mid|high>
+halo set bluetooth <on|off>
+halo set profile <1-5>
+halo set autooff <on|off>          # power off after 30 idle minutes
+halo set mute <on|off>
+halo watch                         # what the halo-watch service runs
+halo skill install                 # agent skill for Claude Code
 ```
 
-Each exits 0 on success, or 1 with the error on stderr.
+Each takes `--json`, and exits 0 on success or 1 with the error on stderr. A
+change only counts once the headset reports it back (auto off and mute aren't
+reported, so those are sent and not confirmed).
 
 ## How it works
 

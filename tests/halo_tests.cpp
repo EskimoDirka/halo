@@ -34,21 +34,31 @@ public:
     }
 };
 
-// A status report shaped like the ones the headset sends (synthetic values).
-static QByteArray statusReport(int volumeRaw, bool prompts, int profile = 1, int headset = 50, int spare = 92) {
+// One profile's settings in status order: balance, prompts, EQ preset, mic
+// level, ENC, sidetone, sidetone level.
+static ProfileRecord profileRecord(bool prompts, int balance = 0x0A, int eq = 1) {
+    return {balance, prompts ? 1 : 0, eq, 3, 1, 0, 2};
+}
+
+// A status report laid out like the headset's (synthetic values).
+static QByteArray statusReport(int volumeRaw, bool prompts, int profile = 1, int headset = 50, int spare = 92,
+                               int balance = 0x0A) {
+    std::array<ProfileRecord, Profiles> profiles;
+    for (int n = 1; n <= Profiles; ++n)
+        profiles[size_t(n - 1)] = profileRecord(n == profile ? prompts : true, n == profile ? balance : 0x0A, n);
     QByteArray p;
     p += char(volumeRaw);
     p += QByteArray::fromHex("01000101");
     p += char(headset);
     p += char(spare);
-    p += char(profile);
-    for (int n = 1; n <= 5; ++n) {
-        p += QByteArray::fromHex("010A");
-        p += char(n == profile ? (prompts ? 1 : 0) : 1);
-        p += char(n);
-        p += QByteArray::fromHex("03010002");
+    p += char(0x01);
+    for (const auto &record : profiles) {
+        p += char(0x01);
+        for (int value : record)
+            p += char(value);
     }
-    p += QByteArray::fromHex("0100");
+    p += char(profile);
+    p += QByteArray::fromHex("0000");
     QByteArray report(ReportSize, '\0');
     report[0] = char(ReportId);
     report[1] = char(Command::Status);
@@ -93,15 +103,33 @@ private slots:
 
     void statusParses()
     {
-        const Status status = parseStatus(statusReport(0x22, false, 2, 80, 95));
+        const Status status = parseStatus(statusReport(0x22, false, 2, 80, 95, 0x13));
         QVERIFY(status.valid);
         QCOMPARE(status.volumeRaw, 0x22);
         QCOMPARE(status.activeProfile, 2);
-        QCOMPARE(status.voicePrompts, false);
+        QCOMPARE(status.value(VoicePrompts), 0);
+        QCOMPARE(status.value(Balance), 0x13);
+        QCOMPARE(status.value(EqPreset), 2);
+        QCOMPARE(status.value(MicVolume), 3);
         QCOMPARE(status.headsetBattery, 80);
         QCOMPARE(status.spareBattery, 95);
+        QVERIFY(status.bluetooth);
         QVERIFY(!parseStatus(reply(Command::Status, "")).valid);
         QVERIFY(!parseStatus(reply(Command::Battery, "325C01")).valid);
+    }
+
+    // The real status block CORE logged, profile 1 active, Voice Prompts off.
+    void parsesTheCapturedStatus()
+    {
+        const Status status = parseStatus(reply(Command::Status,
+            "1101000101325C01" "010A000103010002" "010A010203010002" "010A010303010002"
+            "010A010403010102" "010A010503010002" "010000"));
+        QVERIFY(status.valid);
+        QCOMPARE(status.volumeRaw, 0x11);
+        QCOMPARE(status.activeProfile, 1);
+        QCOMPARE(status.value(VoicePrompts), 0);
+        QCOMPARE(status.profiles[3][Sidetone], 1);
+        QCOMPARE(status.profiles[1][VoicePrompts], 1);
     }
 
     void batteryAndEqualizerParse()
@@ -111,11 +139,14 @@ private slots:
         QCOMPARE(battery.headset, 50);
         QCOMPARE(battery.spare, 92);
 
+        // The Valorant curve CORE wrote into Custom slot 1.
         const Equalizer eq = parseEqualizer(reply(Command::Equalizer,
-            "002D00FA03E80FA02710" "0000000000" "1414141414" "0000000000"));
+            "0043010B0CDD17DF1F3C" "886B784340" "280C21281E" "0100000200"));
         QVERIFY(eq.valid);
-        QCOMPARE(eq.frequencies, (QList<int>{45, 250, 1000, 4000, 10000}));
-        QCOMPARE(eq.q, (QList<double>{2.0, 2.0, 2.0, 2.0, 2.0}));
+        QCOMPARE(eq.frequencies, (QList<int>{67, 267, 3293, 6111, 7996}));
+        QCOMPARE(eq.gains, (QList<double>{-12.0, 10.7, 12.0, 6.7, 6.4}));
+        QCOMPARE(eq.q, (QList<double>{4.0, 1.2, 3.3, 4.0, 3.0}));
+        QCOMPARE(eq.types, (QList<int>{1, 0, 0, 2, 0}));
 
         QCOMPARE(parseSerial(reply(Command::Serial, QByteArray("TEST0001").toHex())), QString("TEST0001"));
     }
@@ -172,6 +203,70 @@ private slots:
         transport.push(statusReport(0x18, false));
         QVERIFY(transport.changes().isEmpty());
         QCOMPARE(Settings::load(dir.filePath("settings.json")).volumeRaw, 0x18);
+    }
+
+    // Turning the balance used to make the status look invalid.
+    void balanceChangesKeepTheHeadsetOnline()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, dir.filePath("settings.json"));
+        transport.push(statusReport(0x22, false, 1, 50, 92, 0x13));
+        QCOMPARE(headset.state(), QString("online"));
+        QCOMPARE(headset.balance(), 0x13);
+    }
+
+    // A change made on the headset or in another app is adopted, not undone.
+    void headsetChangesAreAdopted()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, wanting(dir, 0x22, false));
+        transport.push(statusReport(0x22, false));
+        transport.push(statusReport(0x22, false, 1, 50, 92, 0x05));
+        QVERIFY(transport.changes().isEmpty());
+        QCOMPARE(Settings::load(dir.filePath("settings.json")).value(1, Balance), 0x05);
+    }
+
+    // After a power cycle, every setting halo knows for the profile comes back.
+    void restoresEveryFieldAfterPowerCycle()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, wanting(dir, 0x22, false));
+        transport.push(statusReport(0x22, false, 1, 50, 92, 0x05));
+        transport.push(statusReport(PowerOnVolumeRaw, true));
+        QCOMPARE(transport.changes(), (QList<QPair<int, int>>{
+            {Command::Balance, 0x05}, {Command::VoicePrompts, 0}, {Command::Volume, 0x22}}));
+    }
+
+    // Switching profile puts back that profile's remembered settings.
+    void profileSwitchRestoresThatProfile()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, wanting(dir, 0x22, false));
+        transport.push(statusReport(0x22, false, 1));
+        QTest::qWait(3100); // past the restore cooldown
+        transport.push(statusReport(0x22, true, 2));
+        QCOMPARE(transport.changes(), (QList<QPair<int, int>>{{Command::VoicePrompts, 0}}));
+    }
+
+    void settingsAreSent()
+    {
+        QTemporaryDir dir;
+        FakeTransport transport;
+        Headset headset(&transport, dir.filePath("settings.json"));
+        transport.push(statusReport(0x22, false));
+        headset.setSidetone(true);
+        headset.setSidetoneLevel(3);
+        headset.setMicVolume(1);
+        headset.setEqPreset(5);
+        headset.setActiveProfile(3);
+        QCOMPARE(transport.changes(), (QList<QPair<int, int>>{
+            {Command::Sidetone, 1}, {Command::SidetoneLevel, 3}, {Command::MicVolume, 1},
+            {Command::EqPreset, 5}, {Command::ActiveProfile, 3}}));
+        QCOMPARE(Settings::load(dir.filePath("settings.json")).value(1, SidetoneLevel), 3);
     }
 
     void keepSettingsOffLeavesTheHeadsetAlone()

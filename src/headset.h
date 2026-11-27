@@ -1,6 +1,7 @@
 #pragma once
 
 #include <QDateTime>
+#include <QHash>
 #include <QList>
 #include <QObject>
 #include <QTimer>
@@ -10,18 +11,27 @@
 #include "settings.h"
 #include "transport.h"
 
-// The headset's state and the one thing CORE never did: put Voice Prompts
-// and the volume back after every power-on. Exposed to QML as `headset`.
+// The headset's state, its settings, and the one thing CORE never did: put
+// each profile's settings back after the headset resets itself on power-on.
+// Exposed to QML as `headset`.
 class Headset : public QObject {
     Q_OBJECT
     Q_PROPERTY(QString state READ state NOTIFY stateChanged)
     Q_PROPERTY(bool online READ online NOTIFY stateChanged)
     Q_PROPERTY(int volume READ volume NOTIFY statusChanged)
-    Q_PROPERTY(bool voicePrompts READ voicePrompts NOTIFY statusChanged)
-    Q_PROPERTY(int activeProfile READ activeProfile NOTIFY statusChanged)
     Q_PROPERTY(int headsetBattery READ headsetBattery NOTIFY statusChanged)
     Q_PROPERTY(int spareBattery READ spareBattery NOTIFY statusChanged)
+    Q_PROPERTY(bool bluetooth READ bluetooth NOTIFY statusChanged)
+    Q_PROPERTY(int activeProfile READ activeProfile NOTIFY statusChanged)
+    Q_PROPERTY(bool voicePrompts READ voicePrompts NOTIFY statusChanged)
+    Q_PROPERTY(int balance READ balance NOTIFY statusChanged)
+    Q_PROPERTY(int eqPreset READ eqPreset NOTIFY statusChanged)
+    Q_PROPERTY(int micVolume READ micVolume NOTIFY statusChanged)
+    Q_PROPERTY(bool noiseCancelling READ noiseCancelling NOTIFY statusChanged)
+    Q_PROPERTY(bool sidetone READ sidetone NOTIFY statusChanged)
+    Q_PROPERTY(int sidetoneLevel READ sidetoneLevel NOTIFY statusChanged)
     Q_PROPERTY(QVariantList eqFrequencies READ eqFrequencies NOTIFY equalizerChanged)
+    Q_PROPERTY(QVariantList eqGains READ eqGains NOTIFY equalizerChanged)
     Q_PROPERTY(bool keepSettings READ keepSettings WRITE setKeepSettings NOTIFY settingsChanged)
     Q_PROPERTY(bool restoreVolume READ restoreVolume WRITE setRestoreVolume NOTIFY settingsChanged)
     Q_PROPERTY(QDateTime lastRestored READ lastRestored NOTIFY restored)
@@ -38,11 +48,20 @@ public:
     bool online() const { return m_online; }
     int volume() const { return Protocol::volumeRawToPercent(m_status.volumeRaw); }
     int volumeRaw() const { return m_status.volumeRaw; }
-    bool voicePrompts() const { return m_status.voicePrompts; }
-    int activeProfile() const { return m_status.activeProfile; }
     int headsetBattery() const { return m_status.headsetBattery; }
     int spareBattery() const { return m_status.spareBattery; }
+    bool bluetooth() const { return m_status.bluetooth; }
+    int activeProfile() const { return m_status.activeProfile; }
+    int value(int field) const { return m_status.value(field); }
+    bool voicePrompts() const { return value(Protocol::VoicePrompts) != 0; }
+    int balance() const { return value(Protocol::Balance); }
+    int eqPreset() const { return value(Protocol::EqPreset); }
+    int micVolume() const { return value(Protocol::MicVolume); }
+    bool noiseCancelling() const { return value(Protocol::NoiseCancelling) != 0; }
+    bool sidetone() const { return value(Protocol::Sidetone) != 0; }
+    int sidetoneLevel() const { return value(Protocol::SidetoneLevel); }
     QVariantList eqFrequencies() const;
+    QVariantList eqGains() const;
     const Protocol::Status &status() const { return m_status; }
     const Protocol::Battery &battery() const { return m_battery; }
     const Protocol::Equalizer &equalizer() const { return m_equalizer; }
@@ -59,8 +78,21 @@ public:
 
     Q_INVOKABLE void setVolume(int percent);
     Q_INVOKABLE void stepVolume(int deltaPercent);
-    Q_INVOKABLE void setVoicePrompts(bool on);
-    Q_INVOKABLE void toggleVoicePrompts() { setVoicePrompts(!m_status.voicePrompts); }
+    // Any per-profile setting (a Protocol::Field), on the active profile.
+    Q_INVOKABLE void setField(int field, int value);
+    Q_INVOKABLE void setVoicePrompts(bool on) { setField(Protocol::VoicePrompts, on); }
+    Q_INVOKABLE void toggleVoicePrompts() { setVoicePrompts(!voicePrompts()); }
+    Q_INVOKABLE void setBalance(int value) { setField(Protocol::Balance, value); }
+    Q_INVOKABLE void setEqPreset(int preset) { setField(Protocol::EqPreset, preset); }
+    Q_INVOKABLE void setMicVolume(int level) { setField(Protocol::MicVolume, level); }
+    Q_INVOKABLE void setNoiseCancelling(bool on) { setField(Protocol::NoiseCancelling, on); }
+    Q_INVOKABLE void setSidetone(bool on) { setField(Protocol::Sidetone, on); }
+    Q_INVOKABLE void setSidetoneLevel(int level) { setField(Protocol::SidetoneLevel, level); }
+    Q_INVOKABLE void setBluetooth(bool on);
+    Q_INVOKABLE void setActiveProfile(int profile);
+    // Not reported back by the headset, so they're sent and not shown.
+    Q_INVOKABLE void setAutoOff(bool on);
+    Q_INVOKABLE void setMicMute(bool muted);
     Q_INVOKABLE void refresh();
     Q_INVOKABLE void undo();
     Q_INVOKABLE void redo();
@@ -77,18 +109,21 @@ signals:
     void restored(const QString &what);
 
 private:
+    // What a change touched: the volume, Bluetooth, the active profile, or a
+    // per-profile field (kind >= 0 is the Protocol::Field).
+    enum Kind { VolumeKind = -1, BluetoothKind = -2, ProfileKind = -3 };
     struct Change {
-        enum Field { Volume, Prompts } field;
+        int kind;
+        int profile;
         int before, after;
         qint64 at;
     };
 
     void onReceived(const QByteArray &report);
     void onStatus(const Protocol::Status &status);
-    void sendVolume(int raw);
-    void sendPrompts(bool on);
-    void record(Change::Field field, int before, int after);
-    void apply(Change::Field field, int value);
+    void send(quint8 command, int value, bool throttled = false);
+    void record(int kind, int before, int after);
+    void apply(const Change &change, int value);
     void setOnline(bool online);
     void saveSettings();
 
@@ -101,9 +136,9 @@ private:
     bool m_online = false;
     bool m_haveStatus = false;
     int m_pendingVolumeRaw = -1; // last raw volume halo wrote, until the headset echoes it
-    int m_queuedVolumeRaw = -1;  // a slider value waiting out the throttle
+    QHash<quint8, int> m_queued; // slider values waiting out the throttle
     QDateTime m_lastRestored;
     qint64 m_lastRestoreAt = 0;
     QList<Change> m_undo, m_redo;
-    QTimer m_poll, m_answerTimeout, m_volumeThrottle, m_confirm;
+    QTimer m_poll, m_answerTimeout, m_throttle, m_confirm;
 };

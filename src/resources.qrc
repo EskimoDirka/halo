@@ -6,6 +6,7 @@
         <file alias="SettingRow.qml">SettingRow.qml</file>
         <file alias="EqualizerBands.qml">EqualizerBands.qml</file>
         <file alias="Toast.qml">Toast.qml</file>
+        <file alias="SegmentedChoice.qml">SegmentedChoice.qml</file>
         <file alias="ShortcutHelp.qml">ShortcutHelp.qml</file>
         <file alias="skill/SKILL.md">skill/SKILL.md</file>
         <file alias="i18n/da.json">i18n/da.json</file>
