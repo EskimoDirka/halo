@@ -23,6 +23,7 @@ affiliated with Glorious.
 - Keeps every profile's settings across power-ons
 - A custom EQ editor: drag the five bands on the response graph, pick each band's filter, and save the curve to the headset
 - Saves a profile to the headset, so it keeps those settings by itself
+- A battery widget for the Omarchy bar
 - A command line for scripts and agents
 
 ## Install
@@ -43,6 +44,18 @@ To keep settings across power-ons even when the window is closed:
 
 ```sh
 systemctl --user enable --now halo-watch
+```
+
+### Battery on the Omarchy bar
+
+halo comes with a bar widget that shows the headset's battery, with both
+packs in its tooltip; clicking it opens halo. It hides while the headset is
+off.
+
+```sh
+cp -r /usr/share/halo/omarchy/halo.battery ~/.config/omarchy/plugins/
+omarchy-shell shell rescanPlugins
+omarchy plugin enable halo.battery --after omarchy.audio
 ```
 
 ## Shortcuts

@@ -23,4 +23,7 @@ package() {
   install -Dm644 "$startdir/halo.desktop" "$pkgdir/usr/share/applications/halo.desktop"
   install -Dm644 "$startdir/70-halo.rules" "$pkgdir/usr/lib/udev/rules.d/70-halo.rules"
   install -Dm644 "$startdir/halo-watch.service" "$pkgdir/usr/lib/systemd/user/halo-watch.service"
+  # The Omarchy bar widget, for users to copy into their shell config.
+  install -d "$pkgdir/usr/share/halo/omarchy"
+  cp -r omarchy/halo.battery "$pkgdir/usr/share/halo/omarchy/"
 }

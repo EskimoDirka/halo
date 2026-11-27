@@ -1,0 +1,20 @@
+{
+  "schemaVersion": 1,
+  "id": "halo.battery",
+  "name": "Headset battery",
+  "version": "1.0.0",
+  "author": "halo",
+  "description": "Battery level of a Glorious GHS Wireless InfinitePlay headset, from halo",
+  "kinds": [
+    "bar-widget"
+  ],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Headset battery",
+    "description": "Headset battery level from halo; click to open halo",
+    "category": "System",
+    "allowMultiple": false
+  }
+}
