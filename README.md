@@ -26,6 +26,15 @@ affiliated with Glorious.
 - A battery widget for the Omarchy bar
 - A command line for scripts and agents
 
+## Custom EQ
+
+![halo's EQ editor: a response graph with a handle for each of the five bands, and the selected band's filter, frequency, gain, and width](docs/eq-editor.png)
+
+Drag a band's handle on the graph to change its frequency and gain, and
+scroll over it to change its width. The selected band's filter, frequency,
+gain, and width also have their own controls. Edits play at once on
+Custom 1; Save to headset keeps them.
+
 ## Install
 
 On Omarchy or Arch:
