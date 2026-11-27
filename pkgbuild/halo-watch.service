@@ -1,0 +1,11 @@
+[Unit]
+Description=Keep GHS Wireless InfinitePlay settings across power-ons (halo)
+Documentation=https://github.com/EskimoDirka/halo
+
+[Service]
+ExecStart=/usr/bin/halo watch
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target

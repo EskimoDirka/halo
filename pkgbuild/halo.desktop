@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Name=Halo
+Comment=Settings for the GHS Wireless InfinitePlay headset
+Comment[da]=Indstillinger til GHS Wireless InfinitePlay-headsettet
+Comment[de]=Einstellungen für das GHS Wireless InfinitePlay-Headset
+Comment[es]=Ajustes para los auriculares GHS Wireless InfinitePlay
+Exec=halo open
+Icon=halo
+Terminal=false
+Categories=Settings;HardwareSettings;AudioVideo;
+Keywords=headset;glorious;infiniteplay;battery;voice prompts;
+StartupWMClass=halo

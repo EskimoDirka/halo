@@ -1,0 +1,3 @@
+# Let the logged-in user talk to the GHS Wireless InfinitePlay receiver's
+# HID control channel, so halo can run without root.
+SUBSYSTEM=="hidraw", ATTRS{idVendor}=="3794", ATTRS{idProduct}=="d003|d005", TAG+="uaccess"
